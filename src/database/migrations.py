@@ -110,13 +110,24 @@ def set_master_password(password: str = "masterpass123") -> None:
 
 
 def database_needs_init() -> bool:
-    """Check if database needs initialization."""
+    """Check if database needs initialization (no tables exist)."""
     db = DatabaseConnection.get_instance()
     try:
         row = db.fetchone("SELECT name FROM sqlite_master WHERE type='table' AND name='issues'")
         return row is None
     except Exception:
         return True
+
+
+def ensure_all_tables_exist() -> None:
+    """
+    Ensure all required tables exist in the database.
+
+    This handles the case where a database was created before new tables
+    (like audit_log) were added. Uses CREATE TABLE IF NOT EXISTS so it's
+    safe to run on existing databases.
+    """
+    init_database()
 
 
 def run_migrations() -> None:

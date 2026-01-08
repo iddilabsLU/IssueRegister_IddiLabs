@@ -19,6 +19,7 @@ from src.database.connection import DatabaseConnection
 from src.services.auth import get_auth_service, AuthService
 from src.services.permissions import get_permission_service
 from src.services.export import get_export_service
+from src.services.config import set_saved_database_path
 
 
 class SettingsView(QWidget):
@@ -61,25 +62,34 @@ class SettingsView(QWidget):
 
         # Database Configuration
         db_group = QGroupBox("Database Configuration")
-        db_layout = QFormLayout(db_group)
+        db_layout = QVBoxLayout(db_group)
         db_layout.setSpacing(12)
 
-        db_path_layout = QHBoxLayout()
+        # Current path display
+        path_form = QFormLayout()
         self._db_path_edit = QLineEdit()
         self._db_path_edit.setReadOnly(True)
-        db_path_layout.addWidget(self._db_path_edit, 1)
-
-        self._browse_btn = QPushButton("Browse...")
-        db_path_layout.addWidget(self._browse_btn)
-
-        db_layout.addRow("Database Path:", db_path_layout)
+        path_form.addRow("Current Database:", self._db_path_edit)
 
         db_status_layout = QHBoxLayout()
         self._db_status_label = QLabel("Connected")
         self._db_status_label.setStyleSheet("color: #059669;")
         db_status_layout.addWidget(self._db_status_label)
         db_status_layout.addStretch()
-        db_layout.addRow("Status:", db_status_layout)
+        path_form.addRow("Status:", db_status_layout)
+
+        db_layout.addLayout(path_form)
+
+        # Database selection buttons
+        db_btn_layout = QHBoxLayout()
+        self._open_existing_btn = QPushButton("Open Existing Database")
+        db_btn_layout.addWidget(self._open_existing_btn)
+
+        self._create_new_btn = QPushButton("Create New Database")
+        db_btn_layout.addWidget(self._create_new_btn)
+
+        db_btn_layout.addStretch()
+        db_layout.addLayout(db_btn_layout)
 
         main_layout.addWidget(db_group)
 
@@ -101,41 +111,18 @@ class SettingsView(QWidget):
         auth_note.setProperty("muted", True)
         auth_layout.addWidget(auth_note)
 
+        # Master password change section
+        master_pw_layout = QHBoxLayout()
+        master_pw_label = QLabel("Master recovery password:")
+        master_pw_layout.addWidget(master_pw_label)
+        master_pw_layout.addStretch()
+        self._change_master_pw_btn = QPushButton("Change Master Password")
+        master_pw_layout.addWidget(self._change_master_pw_btn)
+        auth_layout.addLayout(master_pw_layout)
+
         main_layout.addWidget(self._auth_group)
 
-        # User Management
-        self._user_group = QGroupBox("User Management")
-        user_layout = QVBoxLayout(self._user_group)
-
-        # User table
-        self._user_table = QTableWidget()
-        self._user_table.setColumnCount(4)
-        self._user_table.setHorizontalHeaderLabels(["ID", "Username", "Role", "Departments"])
-        self._user_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._user_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._user_table.setMaximumHeight(200)
-        user_layout.addWidget(self._user_table)
-
-        # User action buttons
-        user_btn_layout = QHBoxLayout()
-        self._add_user_btn = QPushButton("Add User")
-        user_btn_layout.addWidget(self._add_user_btn)
-
-        self._edit_user_btn = QPushButton("Edit User")
-        user_btn_layout.addWidget(self._edit_user_btn)
-
-        self._delete_user_btn = QPushButton("Delete User")
-        self._delete_user_btn.setProperty("danger", True)
-        user_btn_layout.addWidget(self._delete_user_btn)
-
-        user_btn_layout.addStretch()
-        user_layout.addLayout(user_btn_layout)
-
-        main_layout.addWidget(self._user_group)
-
-        # Data Management
+        # Data Management (includes User Management for admins)
         data_group = QGroupBox("Data Management")
         data_layout = QVBoxLayout(data_group)
 
@@ -194,6 +181,55 @@ class SettingsView(QWidget):
         bulk_layout.addWidget(self._bulk_import_btn)
         data_layout.addWidget(self._bulk_frame)
 
+        # User Management section (Admin only) - inside data management
+        self._user_group = QFrame()
+        user_layout = QVBoxLayout(self._user_group)
+        user_layout.setContentsMargins(0, 12, 0, 0)
+
+        # User management header with separator
+        user_header = QLabel("User Management")
+        user_header.setProperty("subheading", True)
+        user_header.setStyleSheet("font-weight: bold; font-size: 14px; margin-top: 8px;")
+        user_layout.addWidget(user_header)
+
+        # User search
+        search_layout = QHBoxLayout()
+        search_label = QLabel("Search:")
+        search_layout.addWidget(search_label)
+        self._user_search_edit = QLineEdit()
+        self._user_search_edit.setPlaceholderText("Search by username...")
+        self._user_search_edit.setClearButtonEnabled(True)
+        search_layout.addWidget(self._user_search_edit, 1)
+        user_layout.addLayout(search_layout)
+
+        # User table - now with more space (removed max height)
+        self._user_table = QTableWidget()
+        self._user_table.setColumnCount(4)
+        self._user_table.setHorizontalHeaderLabels(["ID", "Username", "Role", "Departments"])
+        self._user_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._user_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self._user_table.setMinimumHeight(300)
+        user_layout.addWidget(self._user_table)
+
+        # User action buttons
+        user_btn_layout = QHBoxLayout()
+        self._add_user_btn = QPushButton("Add User")
+        user_btn_layout.addWidget(self._add_user_btn)
+
+        self._edit_user_btn = QPushButton("Edit User")
+        user_btn_layout.addWidget(self._edit_user_btn)
+
+        self._delete_user_btn = QPushButton("Delete User")
+        self._delete_user_btn.setProperty("danger", True)
+        user_btn_layout.addWidget(self._delete_user_btn)
+
+        user_btn_layout.addStretch()
+        user_layout.addLayout(user_btn_layout)
+
+        data_layout.addWidget(self._user_group)
+
         main_layout.addWidget(data_group)
 
         main_layout.addStretch()
@@ -206,8 +242,11 @@ class SettingsView(QWidget):
 
     def _connect_signals(self):
         """Connect UI signals."""
-        self._browse_btn.clicked.connect(self._on_browse_database)
+        self._open_existing_btn.clicked.connect(self._on_open_existing_database)
+        self._create_new_btn.clicked.connect(self._on_create_new_database)
         self._auth_checkbox.stateChanged.connect(self._on_auth_changed)
+        self._change_master_pw_btn.clicked.connect(self._on_change_master_password)
+        self._user_search_edit.textChanged.connect(self._on_user_search_changed)
         self._add_user_btn.clicked.connect(self._on_add_user)
         self._edit_user_btn.clicked.connect(self._on_edit_user)
         self._delete_user_btn.clicked.connect(self._on_delete_user)
@@ -236,7 +275,9 @@ class SettingsView(QWidget):
         self._user_group.setVisible(is_admin)
         self._import_frame.setVisible(is_admin)
         self._bulk_frame.setVisible(is_admin)
-        self._browse_btn.setEnabled(is_admin)
+        # Database buttons are available to all users (for shared database scenarios)
+        self._open_existing_btn.setEnabled(True)
+        self._create_new_btn.setEnabled(True)
 
         # Export Users - Admin only
         self._export_users_frame.setVisible(is_admin)
@@ -259,8 +300,13 @@ class SettingsView(QWidget):
         self._refresh_user_table()
 
     def _refresh_user_table(self):
-        """Refresh the user management table."""
+        """Refresh the user management table with optional search filter."""
         users = queries.list_users()
+
+        # Apply search filter if search text exists
+        search_text = self._user_search_edit.text().strip().lower()
+        if search_text:
+            users = [u for u in users if search_text in u.username.lower()]
 
         self._user_table.setRowCount(len(users))
         for row, user in enumerate(users):
@@ -271,18 +317,36 @@ class SettingsView(QWidget):
                 ", ".join(user.departments) if user.departments else "All"
             ))
 
-    def _on_browse_database(self):
-        """Browse for database file."""
+    def _on_user_search_changed(self, text: str):
+        """Handle user search text change."""
+        self._refresh_user_table()
+
+    def _on_open_existing_database(self):
+        """Open an existing database file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Existing Database",
+            "",
+            "SQLite Database (*.db)"
+        )
+
+        if file_path:
+            self._connect_to_database(file_path)
+
+    def _on_create_new_database(self):
+        """Create a new database file."""
         file_path, _ = QFileDialog.getSaveFileName(
             self,
-            "Select Database Location",
+            "Create New Database",
             "issue_register.db",
             "SQLite Database (*.db)"
         )
 
-        if not file_path:
-            return
+        if file_path:
+            self._connect_to_database(file_path)
 
+    def _connect_to_database(self, file_path: str):
+        """Connect to the specified database file."""
         try:
             # Change database path
             DatabaseConnection.set_database_path(file_path)
@@ -291,6 +355,9 @@ class SettingsView(QWidget):
             from src.database.migrations import run_migrations
             run_migrations()
 
+            # Save path to config file for next launch
+            set_saved_database_path(file_path)
+
             self._db_path_edit.setText(file_path)
             self._db_status_label.setText("Connected")
             self._db_status_label.setStyleSheet("color: #059669;")
@@ -298,7 +365,8 @@ class SettingsView(QWidget):
             QMessageBox.information(
                 self,
                 "Database Changed",
-                f"Successfully connected to database:\n{file_path}"
+                f"Successfully connected to database:\n{file_path}\n\n"
+                "Note: Restart the application for all changes to take effect."
             )
 
         except Exception as e:
@@ -336,6 +404,11 @@ class SettingsView(QWidget):
             f"Authentication has been {'enabled' if enable else 'disabled'}.\n"
             "Changes will take effect on next login."
         )
+
+    def _on_change_master_password(self):
+        """Open dialog to change master password."""
+        dialog = ChangeMasterPasswordDialog(parent=self)
+        dialog.exec()
 
     def _on_add_user(self):
         """Open dialog to add new user."""
@@ -376,13 +449,25 @@ class SettingsView(QWidget):
         )
 
         if reply == QMessageBox.StandardButton.Yes:
-            if self._auth.delete_user(user_id):
-                self._refresh_user_table()
-            else:
+            try:
+                if self._auth.delete_user(user_id):
+                    self._refresh_user_table()
+                    QMessageBox.information(
+                        self,
+                        "User Deleted",
+                        f"User '{username}' has been deleted successfully."
+                    )
+                else:
+                    QMessageBox.critical(
+                        self,
+                        "Delete Failed",
+                        "Cannot delete the last administrator account."
+                    )
+            except Exception as e:
                 QMessageBox.critical(
                     self,
-                    "Delete Failed",
-                    "Cannot delete the last administrator account."
+                    "Error",
+                    f"An error occurred while deleting the user:\n{str(e)}"
                 )
 
     def _on_export_backup(self):
@@ -736,35 +821,176 @@ class UserDialog(QDialog):
             else:
                 edit_departments = edit_selected
 
-        if self._is_new:
-            user = self._auth.create_user(
-                username, password, role, departments,
-                view_departments=view_departments,
-                edit_departments=edit_departments
-            )
-            if not user:
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Username '{username}' already exists."
+        try:
+            if self._is_new:
+                user = self._auth.create_user(
+                    username, password, role, departments,
+                    view_departments=view_departments,
+                    edit_departments=edit_departments
                 )
-                return
-        else:
-            user = self._auth.update_user(
-                self._user.id,
-                username=username,
-                password=password if password else None,
-                role=role,
-                departments=departments,
-                view_departments=view_departments,
-                edit_departments=edit_departments
-            )
-            if not user:
-                QMessageBox.critical(
-                    self,
-                    "Error",
-                    "Failed to update user. Username may already exist."
-                )
-                return
+                if not user:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Username '{username}' already exists."
+                    )
+                    return
 
-        self.accept()
+                QMessageBox.information(
+                    self,
+                    "User Created",
+                    f"User '{username}' has been created successfully."
+                )
+            else:
+                user = self._auth.update_user(
+                    self._user.id,
+                    username=username,
+                    password=password if password else None,
+                    role=role,
+                    departments=departments,
+                    view_departments=view_departments,
+                    edit_departments=edit_departments
+                )
+                if not user:
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        "Failed to update user. Username may already exist."
+                    )
+                    return
+
+                QMessageBox.information(
+                    self,
+                    "User Updated",
+                    f"User '{username}' has been updated successfully."
+                )
+
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"An error occurred while saving the user:\n{str(e)}"
+            )
+
+
+class ChangeMasterPasswordDialog(QDialog):
+    """Dialog for changing the master recovery password."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._auth = get_auth_service()
+
+        self._setup_ui()
+        self._connect_signals()
+
+    def _setup_ui(self):
+        """Set up dialog UI."""
+        self.setWindowTitle("Change Master Password")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        # Instructions
+        instructions = QLabel(
+            "The master password is used for account recovery when users\n"
+            "forget their passwords. Keep this password secure."
+        )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+
+        self._current_pw_edit = QLineEdit()
+        self._current_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._current_pw_edit.setPlaceholderText("Enter current master password")
+        form.addRow("Current Password:", self._current_pw_edit)
+
+        self._new_pw_edit = QLineEdit()
+        self._new_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._new_pw_edit.setPlaceholderText("Enter new master password")
+        form.addRow("New Password:", self._new_pw_edit)
+
+        self._confirm_pw_edit = QLineEdit()
+        self._confirm_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._confirm_pw_edit.setPlaceholderText("Confirm new master password")
+        form.addRow("Confirm Password:", self._confirm_pw_edit)
+
+        layout.addLayout(form)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Change Password")
+        save_btn.setProperty("primary", True)
+        save_btn.clicked.connect(self._on_save)
+        btn_layout.addWidget(save_btn)
+
+        layout.addLayout(btn_layout)
+
+    def _connect_signals(self):
+        """Connect signals."""
+        self._confirm_pw_edit.returnPressed.connect(self._on_save)
+
+    def _on_save(self):
+        """Save new master password."""
+        current_pw = self._current_pw_edit.text()
+        new_pw = self._new_pw_edit.text()
+        confirm_pw = self._confirm_pw_edit.text()
+
+        # Validation
+        if not current_pw:
+            QMessageBox.warning(self, "Validation", "Please enter the current master password.")
+            self._current_pw_edit.setFocus()
+            return
+
+        if not new_pw:
+            QMessageBox.warning(self, "Validation", "Please enter a new master password.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if len(new_pw) < 8:
+            QMessageBox.warning(self, "Validation", "New password must be at least 8 characters.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if new_pw != confirm_pw:
+            QMessageBox.warning(self, "Validation", "New passwords do not match.")
+            self._confirm_pw_edit.setFocus()
+            return
+
+        # Verify current master password
+        if not self._auth.verify_master_password(current_pw):
+            QMessageBox.critical(self, "Error", "Current master password is incorrect.")
+            self._current_pw_edit.clear()
+            self._current_pw_edit.setFocus()
+            return
+
+        # Update master password
+        try:
+            from src.database.migrations import set_master_password
+            set_master_password(new_pw)
+
+            QMessageBox.information(
+                self,
+                "Password Changed",
+                "Master password has been changed successfully."
+            )
+            self.accept()
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to change master password:\n{str(e)}"
+            )
