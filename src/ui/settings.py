@@ -204,13 +204,16 @@ class SettingsView(QWidget):
 
         # User table - now with more space (removed max height)
         self._user_table = QTableWidget()
-        self._user_table.setColumnCount(4)
-        self._user_table.setHorizontalHeaderLabels(["ID", "Username", "Role", "Departments"])
+        self._user_table.setColumnCount(5)
+        self._user_table.setHorizontalHeaderLabels(
+            ["ID", "Username", "Role", "Editor Rights", "Viewer Rights"]
+        )
         self._user_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._user_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._user_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._user_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._user_table.setMinimumHeight(300)
+        self._user_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self._user_table.setMinimumHeight(400)
         user_layout.addWidget(self._user_table)
 
         # User action buttons
@@ -313,9 +316,27 @@ class SettingsView(QWidget):
             self._user_table.setItem(row, 0, QTableWidgetItem(str(user.id)))
             self._user_table.setItem(row, 1, QTableWidgetItem(user.username))
             self._user_table.setItem(row, 2, QTableWidgetItem(user.role))
-            self._user_table.setItem(row, 3, QTableWidgetItem(
-                ", ".join(user.departments) if user.departments else "All"
-            ))
+
+            # Determine Editor Rights and Viewer Rights based on role
+            if user.role == UserRole.ADMINISTRATOR.value:
+                # Administrators have full access
+                editor_rights = "All"
+                viewer_rights = "All"
+            elif user.role == UserRole.EDITOR.value:
+                # Editors have separate edit and view department lists
+                editor_rights = ", ".join(user.edit_departments) if user.edit_departments else "All"
+                viewer_rights = ", ".join(user.view_departments) if user.view_departments else "All"
+            elif user.role == UserRole.RESTRICTED.value:
+                # Restricted users can edit in their assigned departments
+                editor_rights = ", ".join(user.departments) if user.departments else "All"
+                viewer_rights = ", ".join(user.departments) if user.departments else "All"
+            else:
+                # Viewers have no edit rights, only view rights
+                editor_rights = "-"
+                viewer_rights = ", ".join(user.departments) if user.departments else "All"
+
+            self._user_table.setItem(row, 3, QTableWidgetItem(editor_rights))
+            self._user_table.setItem(row, 4, QTableWidgetItem(viewer_rights))
 
     def _on_user_search_changed(self, text: str):
         """Handle user search text change."""

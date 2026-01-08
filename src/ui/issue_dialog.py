@@ -386,9 +386,19 @@ class IssueDialog(QDialog):
             ("supporting_docs", self._docs_list),
         ]
 
+        # Text widgets that support setReadOnly (keeps scrolling working)
+        text_widgets = {
+            self._title_edit, self._summary_edit, self._description_edit,
+            self._remediation_edit, self._risk_desc_edit, self._updates_edit
+        }
+
         for field_name, widget in all_fields:
             enabled = field_name in editable_fields
-            widget.setEnabled(enabled)
+            if widget in text_widgets:
+                # Use setReadOnly for text fields to keep scrolling functional
+                widget.setReadOnly(not enabled)
+            else:
+                widget.setEnabled(enabled)
 
         # Status has special handling
         self._status_combo.setEnabled("status" in editable_fields)
@@ -401,14 +411,21 @@ class IssueDialog(QDialog):
 
     def _set_all_readonly(self, readonly: bool):
         """Set all fields to readonly."""
-        for widget in [
-            self._title_edit, self._summary_edit, self._topic_combo,
-            self._dept_combo, self._identified_combo, self._owner_combo,
-            self._description_edit, self._remediation_edit,
-            self._risk_desc_edit, self._risk_level_combo,
-            self._id_date, self._due_date, self._followup_date,
-            self._updates_edit, self._status_combo
-        ]:
+        # Text widgets use setReadOnly to keep scrolling functional
+        text_widgets = [
+            self._title_edit, self._summary_edit, self._description_edit,
+            self._remediation_edit, self._risk_desc_edit, self._updates_edit
+        ]
+        for widget in text_widgets:
+            widget.setReadOnly(readonly)
+
+        # Other widgets use setEnabled
+        other_widgets = [
+            self._topic_combo, self._dept_combo, self._identified_combo,
+            self._owner_combo, self._risk_level_combo, self._id_date,
+            self._due_date, self._followup_date, self._status_combo
+        ]
+        for widget in other_widgets:
             widget.setEnabled(not readonly)
 
         self._add_doc_btn.setEnabled(not readonly)

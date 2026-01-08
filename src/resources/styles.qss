@@ -109,9 +109,10 @@ QSpinBox:focus, QDoubleSpinBox:focus {
     border: 1px solid #2D3E50;
 }
 
-QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {
+QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled,
+QSpinBox:disabled, QDoubleSpinBox:disabled {
     background-color: #F3F4F6;
-    color: #9CA3AF;
+    color: #4B5563;
 }
 
 QLineEdit[readOnly="true"], QTextEdit[readOnly="true"] {
@@ -133,7 +134,7 @@ QComboBox:focus {
 
 QComboBox:disabled {
     background-color: #F3F4F6;
-    color: #9CA3AF;
+    color: #4B5563;
 }
 
 QComboBox::drop-down {
@@ -168,6 +169,11 @@ QDateEdit {
 
 QDateEdit:focus {
     border: 1px solid #2D3E50;
+}
+
+QDateEdit:disabled {
+    background-color: #F3F4F6;
+    color: #4B5563;
 }
 
 QDateEdit::drop-down {
