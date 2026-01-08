@@ -30,8 +30,9 @@ class LoginDialog(QDialog):
     def _setup_ui(self):
         """Set up the dialog UI."""
         self.setWindowTitle("Issue Register - Login")
-        self.setFixedSize(400, 300)
+        self.setMinimumWidth(400)
         self.setModal(True)
+        self.adjustSize()
 
         layout = QVBoxLayout(self)
         layout.setSpacing(20)

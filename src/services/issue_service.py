@@ -277,6 +277,137 @@ class IssueService:
                 topic_dist[topic] = {s: 0 for s in Status.values()}
             topic_dist[topic][issue.status] += 1
 
+        # Owner distribution (by status) - Chart 1
+        owner_dist = {}
+        for issue in accessible_issues:
+            owner = issue.owner or "Unassigned"
+            if owner not in owner_dist:
+                owner_dist[owner] = {s: 0 for s in Status.values()}
+            owner_dist[owner][issue.status] += 1
+
+        # Identified By distribution (by status) - Chart 2
+        identified_by_dist = {}
+        for issue in accessible_issues:
+            identified_by = issue.identified_by or "Unassigned"
+            if identified_by not in identified_by_dist:
+                identified_by_dist[identified_by] = {s: 0 for s in Status.values()}
+            identified_by_dist[identified_by][issue.status] += 1
+
+        # Risk values for risk-based distributions
+        risk_values = ["None", "Low", "Medium", "High"]
+
+        # Department distribution by risk - Chart 3
+        dept_risk_dist = {}
+        for issue in accessible_issues:
+            dept = issue.department or "Unassigned"
+            if dept not in dept_risk_dist:
+                dept_risk_dist[dept] = {r: 0 for r in risk_values}
+            dept_risk_dist[dept][issue.risk_level] += 1
+
+        # Topic distribution by risk - Chart 4
+        topic_risk_dist = {}
+        for issue in accessible_issues:
+            topic = issue.topic or "Unassigned"
+            if topic not in topic_risk_dist:
+                topic_risk_dist[topic] = {r: 0 for r in risk_values}
+            topic_risk_dist[topic][issue.risk_level] += 1
+
+        # Owner distribution by risk - Chart 5
+        owner_risk_dist = {}
+        for issue in accessible_issues:
+            owner = issue.owner or "Unassigned"
+            if owner not in owner_risk_dist:
+                owner_risk_dist[owner] = {r: 0 for r in risk_values}
+            owner_risk_dist[owner][issue.risk_level] += 1
+
+        # Identified By distribution by risk - Chart 6
+        identified_by_risk_dist = {}
+        for issue in accessible_issues:
+            identified_by = issue.identified_by or "Unassigned"
+            if identified_by not in identified_by_risk_dist:
+                identified_by_risk_dist[identified_by] = {r: 0 for r in risk_values}
+            identified_by_risk_dist[identified_by][issue.risk_level] += 1
+
+        # Risk by due date (monthly buckets) - Chart 7
+        risk_by_duedate = {}
+        for issue in accessible_issues:
+            if issue.due_date:
+                month_key = issue.due_date.strftime("%b %Y")
+                if month_key not in risk_by_duedate:
+                    risk_by_duedate[month_key] = {r: 0 for r in risk_values}
+                risk_by_duedate[month_key][issue.risk_level] += 1
+        # Sort by date for chronological order
+        sorted_risk_by_duedate = dict(sorted(
+            risk_by_duedate.items(),
+            key=lambda x: datetime.strptime(x[0], "%b %Y")
+        ))
+
+        # Topic by due date (monthly buckets) - Chart 8
+        topic_by_duedate = {}
+        all_topics_set = set()
+        for issue in accessible_issues:
+            if issue.due_date:
+                month_key = issue.due_date.strftime("%b %Y")
+                topic = issue.topic or "Unassigned"
+                all_topics_set.add(topic)
+                if month_key not in topic_by_duedate:
+                    topic_by_duedate[month_key] = {}
+                if topic not in topic_by_duedate[month_key]:
+                    topic_by_duedate[month_key][topic] = 0
+                topic_by_duedate[month_key][topic] += 1
+        # Sort by date for chronological order
+        sorted_topic_by_duedate = dict(sorted(
+            topic_by_duedate.items(),
+            key=lambda x: datetime.strptime(x[0], "%b %Y")
+        ))
+
+        # Aging Analysis - how long non-closed issues have been open
+        # Buckets: 0-30, 31-60, 61-90, 91-180, 180+ days
+        aging_buckets = ["0-30 days", "31-60 days", "61-90 days", "91-180 days", "180+ days"]
+        aging_distribution = {bucket: {r: 0 for r in risk_values} for bucket in aging_buckets}
+        today = date.today()
+
+        for issue in accessible_issues:
+            # Exclude closed issues
+            if issue.status == Status.CLOSED.value:
+                continue
+            # Calculate age from identification_date
+            if issue.identification_date:
+                age_days = (today - issue.identification_date).days
+                if age_days <= 30:
+                    bucket = "0-30 days"
+                elif age_days <= 60:
+                    bucket = "31-60 days"
+                elif age_days <= 90:
+                    bucket = "61-90 days"
+                elif age_days <= 180:
+                    bucket = "91-180 days"
+                else:
+                    bucket = "180+ days"
+                aging_distribution[bucket][issue.risk_level] += 1
+
+        # Overdue Breakdown - how long overdue non-closed issues are
+        # Buckets: 0-30, 31-60, 61-90, 90+ days overdue
+        overdue_buckets = ["0-30 days", "31-60 days", "61-90 days", "90+ days"]
+        overdue_breakdown = {bucket: {r: 0 for r in risk_values} for bucket in overdue_buckets}
+
+        for issue in accessible_issues:
+            # Exclude closed issues
+            if issue.status == Status.CLOSED.value:
+                continue
+            # Only include issues that are overdue (past due date)
+            if issue.due_date and issue.due_date < today:
+                overdue_days = (today - issue.due_date).days
+                if overdue_days <= 30:
+                    bucket = "0-30 days"
+                elif overdue_days <= 60:
+                    bucket = "31-60 days"
+                elif overdue_days <= 90:
+                    bucket = "61-90 days"
+                else:
+                    bucket = "90+ days"
+                overdue_breakdown[bucket][issue.risk_level] += 1
+
         return {
             "total_issues": total,
             "active_issues": active,
@@ -288,6 +419,19 @@ class IssueService:
             "risk_distribution": risk_dist,
             "department_distribution": dept_dist,
             "topic_distribution": topic_dist,
+            # New distributions for 8 additional charts
+            "owner_distribution": owner_dist,
+            "identified_by_distribution": identified_by_dist,
+            "department_risk_distribution": dept_risk_dist,
+            "topic_risk_distribution": topic_risk_dist,
+            "owner_risk_distribution": owner_risk_dist,
+            "identified_by_risk_distribution": identified_by_risk_dist,
+            "risk_by_duedate": sorted_risk_by_duedate,
+            "topic_by_duedate": sorted_topic_by_duedate,
+            "all_topics": list(all_topics_set),
+            # Aging and Overdue charts
+            "aging_distribution": aging_distribution,
+            "overdue_breakdown": overdue_breakdown,
         }
 
     def add_update_note(

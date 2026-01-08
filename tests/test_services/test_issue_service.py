@@ -336,6 +336,189 @@ class TestDashboardData:
         data = issue_service.get_dashboard_data(admin_user, {"department": ["IT"]})
         assert data["total_issues"] == 1
 
+    def test_dashboard_data_has_new_distributions(self, issue_service, admin_user, sample_issue):
+        """Dashboard data includes all new distribution keys for 8 charts."""
+        sample_issue.due_date = date.today()
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        # New keys for 8 additional charts
+        assert "owner_distribution" in data
+        assert "identified_by_distribution" in data
+        assert "department_risk_distribution" in data
+        assert "topic_risk_distribution" in data
+        assert "owner_risk_distribution" in data
+        assert "identified_by_risk_distribution" in data
+        assert "risk_by_duedate" in data
+        assert "topic_by_duedate" in data
+        assert "all_topics" in data
+
+    def test_dashboard_risk_distribution_structure(self, issue_service, admin_user, sample_issue):
+        """Risk distributions have correct segment structure."""
+        sample_issue.department = "IT"
+        sample_issue.risk_level = "Medium"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        # Check structure of risk distribution
+        dept_risk = data["department_risk_distribution"]
+        assert "IT" in dept_risk
+        assert set(dept_risk["IT"].keys()) == {"None", "Low", "Medium", "High"}
+        assert dept_risk["IT"]["Medium"] == 1
+
+    def test_dashboard_duedate_monthly_buckets(self, issue_service, admin_user, sample_issue):
+        """Due date charts use monthly bucket format."""
+        sample_issue.due_date = date(2026, 1, 15)
+        sample_issue.topic = "System Error"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        # Check monthly bucket format
+        assert "Jan 2026" in data["risk_by_duedate"]
+        assert "Jan 2026" in data["topic_by_duedate"]
+
+    def test_dashboard_duedate_excludes_null_dates(self, issue_service, admin_user, sample_issue):
+        """Issues without due dates are excluded from date-based charts."""
+        sample_issue.due_date = None
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        # No entries when no due dates
+        assert data["risk_by_duedate"] == {}
+        assert data["topic_by_duedate"] == {}
+
+    def test_dashboard_owner_distribution(self, issue_service, admin_user, sample_issue):
+        """Owner distribution groups by owner with status segments."""
+        sample_issue.owner = "John Doe"
+        sample_issue.status = Status.OPEN.value
+        issue_service.create_issue(admin_user, sample_issue)
+
+        sample_issue.title = "Another Issue"
+        sample_issue.owner = "Jane Smith"
+        sample_issue.status = Status.IN_PROGRESS.value
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        owner_dist = data["owner_distribution"]
+        assert "John Doe" in owner_dist
+        assert "Jane Smith" in owner_dist
+        assert owner_dist["John Doe"][Status.OPEN.value] == 1
+        assert owner_dist["Jane Smith"][Status.IN_PROGRESS.value] == 1
+
+    def test_dashboard_all_topics_list(self, issue_service, admin_user, sample_issue):
+        """all_topics contains unique topics from issues with due dates."""
+        sample_issue.due_date = date.today()
+        sample_issue.topic = "System Error"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        sample_issue.title = "Another Issue"
+        sample_issue.topic = "Security"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        assert "System Error" in data["all_topics"]
+        assert "Security" in data["all_topics"]
+
+    def test_dashboard_aging_distribution_structure(self, issue_service, admin_user, sample_issue):
+        """Aging distribution has correct bucket structure."""
+        sample_issue.identification_date = date.today()
+        sample_issue.status = Status.OPEN.value
+        sample_issue.risk_level = "Medium"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        aging = data["aging_distribution"]
+        # Check all buckets exist
+        assert "0-30 days" in aging
+        assert "31-60 days" in aging
+        assert "61-90 days" in aging
+        assert "91-180 days" in aging
+        assert "180+ days" in aging
+        # Check risk levels are segments
+        assert set(aging["0-30 days"].keys()) == {"None", "Low", "Medium", "High"}
+        # New issue should be in 0-30 days bucket
+        assert aging["0-30 days"]["Medium"] == 1
+
+    def test_dashboard_aging_excludes_closed(self, issue_service, admin_user, sample_issue):
+        """Aging distribution excludes closed issues."""
+        sample_issue.identification_date = date.today()
+        sample_issue.status = Status.CLOSED.value
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        aging = data["aging_distribution"]
+        # All buckets should have zero counts
+        total = sum(
+            sum(risks.values())
+            for risks in aging.values()
+        )
+        assert total == 0
+
+    def test_dashboard_overdue_breakdown_structure(self, issue_service, admin_user, sample_issue):
+        """Overdue breakdown has correct bucket structure."""
+        from datetime import timedelta
+        # Create an issue that is 10 days overdue
+        sample_issue.due_date = date.today() - timedelta(days=10)
+        sample_issue.status = Status.OPEN.value
+        sample_issue.risk_level = "High"
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        overdue = data["overdue_breakdown"]
+        # Check all buckets exist
+        assert "0-30 days" in overdue
+        assert "31-60 days" in overdue
+        assert "61-90 days" in overdue
+        assert "90+ days" in overdue
+        # Check risk levels are segments
+        assert set(overdue["0-30 days"].keys()) == {"None", "Low", "Medium", "High"}
+        # 10 days overdue should be in 0-30 days bucket
+        assert overdue["0-30 days"]["High"] == 1
+
+    def test_dashboard_overdue_excludes_closed(self, issue_service, admin_user, sample_issue):
+        """Overdue breakdown excludes closed issues."""
+        from datetime import timedelta
+        sample_issue.due_date = date.today() - timedelta(days=10)
+        sample_issue.status = Status.CLOSED.value
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        overdue = data["overdue_breakdown"]
+        # All buckets should have zero counts
+        total = sum(
+            sum(risks.values())
+            for risks in overdue.values()
+        )
+        assert total == 0
+
+    def test_dashboard_overdue_excludes_not_overdue(self, issue_service, admin_user, sample_issue):
+        """Overdue breakdown excludes issues not yet due."""
+        from datetime import timedelta
+        # Issue due tomorrow (not overdue)
+        sample_issue.due_date = date.today() + timedelta(days=1)
+        sample_issue.status = Status.OPEN.value
+        issue_service.create_issue(admin_user, sample_issue)
+
+        data = issue_service.get_dashboard_data(admin_user)
+
+        overdue = data["overdue_breakdown"]
+        # All buckets should have zero counts
+        total = sum(
+            sum(risks.values())
+            for risks in overdue.values()
+        )
+        assert total == 0
+
 
 class TestAddUpdateNote:
     """Test adding update notes to issues."""

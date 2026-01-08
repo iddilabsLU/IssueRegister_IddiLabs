@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
 from PySide6.QtCharts import (
     QChart, QChartView, QPieSeries, QPieSlice,
     QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis,
-    QHorizontalStackedBarSeries
+    QHorizontalStackedBarSeries, QAbstractBarSeries
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QColor, QFont
@@ -263,12 +263,23 @@ class StackedBarChartWidget(QWidget):
             bar_set.setColor(color)
             bar_set.setBorderColor(color.darker(110))
 
+            # Set white label color for visibility inside bars
+            bar_set.setLabelColor(QColor("white"))
+            label_font = QFont()
+            label_font.setPointSize(9)
+            label_font.setBold(True)
+            bar_set.setLabelFont(label_font)
+
             # Add values for each category
             for category in categories:
                 value = data[category].get(segment, 0)
                 bar_set.append(value)
 
             series.append(bar_set)
+
+        # Enable labels inside bars
+        series.setLabelsVisible(True)
+        series.setLabelsPosition(QAbstractBarSeries.LabelsPosition.LabelsCenter)
 
         self._chart.addSeries(series)
 

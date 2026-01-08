@@ -7,12 +7,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QGroupBox, QLineEdit, QPushButton, QLabel, QCheckBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
-    QFileDialog, QDialog, QComboBox, QListWidget, QAbstractItemView,
+    QFileDialog, QDialog, QComboBox, QAbstractItemView,
     QScrollArea, QFrame
 )
 from PySide6.QtCore import Qt
 
 from src.database.models import User, UserRole
+from src.ui.widgets.filter_panel import MultiSelectComboBox
 from src.database import queries
 from src.database.connection import DatabaseConnection
 from src.services.auth import get_auth_service, AuthService
@@ -553,7 +554,7 @@ class UserDialog(QDialog):
     def _setup_ui(self):
         """Set up dialog UI."""
         self.setWindowTitle("Add User" if self._is_new else "Edit User")
-        self.setMinimumSize(450, 500)
+        self.setMinimumSize(450, 350)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
@@ -580,6 +581,13 @@ class UserDialog(QDialog):
 
         layout.addLayout(form)
 
+        # Load departments once
+        self._all_departments = []
+        try:
+            self._all_departments = queries.get_distinct_values("department")
+        except Exception:
+            pass
+
         # Departments (for Restricted/Viewer)
         self._dept_group = QGroupBox("Department Access")
         dept_layout = QVBoxLayout(self._dept_group)
@@ -588,24 +596,13 @@ class UserDialog(QDialog):
         dept_note.setProperty("muted", True)
         dept_layout.addWidget(dept_note)
 
-        self._dept_list = QListWidget()
-        self._dept_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
-        self._dept_list.setMaximumHeight(100)
-
-        # Load departments
-        self._all_departments = []
-        try:
-            self._all_departments = queries.get_distinct_values("department")
-            for dept in self._all_departments:
-                self._dept_list.addItem(dept)
-        except Exception:
-            pass
-
-        dept_layout.addWidget(self._dept_list)
+        self._dept_combo = MultiSelectComboBox("All Departments")
+        self._dept_combo.set_items(self._all_departments)
+        dept_layout.addWidget(self._dept_combo)
 
         layout.addWidget(self._dept_group)
 
-        # Editor department restrictions (two lists)
+        # Editor department restrictions (two dropdowns)
         self._editor_dept_group = QGroupBox("Editor Department Restrictions")
         editor_dept_layout = QVBoxLayout(self._editor_dept_group)
 
@@ -614,26 +611,20 @@ class UserDialog(QDialog):
         view_label.setProperty("muted", True)
         editor_dept_layout.addWidget(view_label)
 
-        self._view_dept_list = QListWidget()
-        self._view_dept_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
-        self._view_dept_list.setMaximumHeight(80)
-        for dept in self._all_departments:
-            self._view_dept_list.addItem(dept)
-        editor_dept_layout.addWidget(self._view_dept_list)
+        self._view_dept_combo = MultiSelectComboBox("All Departments")
+        self._view_dept_combo.set_items(self._all_departments)
+        editor_dept_layout.addWidget(self._view_dept_combo)
 
         # Edit departments
         edit_label = QLabel("Departments this editor can EDIT:")
         edit_label.setProperty("muted", True)
         editor_dept_layout.addWidget(edit_label)
 
-        self._edit_dept_list = QListWidget()
-        self._edit_dept_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
-        self._edit_dept_list.setMaximumHeight(80)
-        for dept in self._all_departments:
-            self._edit_dept_list.addItem(dept)
-        editor_dept_layout.addWidget(self._edit_dept_list)
+        self._edit_dept_combo = MultiSelectComboBox("All Departments")
+        self._edit_dept_combo.set_items(self._all_departments)
+        editor_dept_layout.addWidget(self._edit_dept_combo)
 
-        edit_note = QLabel("Leave empty for unrestricted access to all departments.")
+        edit_note = QLabel("Select 'All Departments' for unrestricted access.")
         edit_note.setProperty("muted", True)
         edit_note.setWordWrap(True)
         editor_dept_layout.addWidget(edit_note)
@@ -666,22 +657,31 @@ class UserDialog(QDialog):
         if idx >= 0:
             self._role_combo.setCurrentIndex(idx)
 
-        # Select departments for Restricted/Viewer
-        for i in range(self._dept_list.count()):
-            item = self._dept_list.item(i)
-            if item.text() in self._user.departments:
-                item.setSelected(True)
+        # Pre-select departments for Restricted/Viewer
+        if self._user.departments:
+            self._dept_combo._selected = list(self._user.departments)
+            self._dept_combo._update_display_label()
+        else:
+            # Empty means all departments - select all
+            self._dept_combo._selected = list(self._all_departments)
+            self._dept_combo._update_display_label()
 
-        # Select view/edit departments for Editor
-        for i in range(self._view_dept_list.count()):
-            item = self._view_dept_list.item(i)
-            if item.text() in self._user.view_departments:
-                item.setSelected(True)
+        # Pre-select view/edit departments for Editor
+        if self._user.view_departments:
+            self._view_dept_combo._selected = list(self._user.view_departments)
+            self._view_dept_combo._update_display_label()
+        else:
+            # Empty means all departments - select all
+            self._view_dept_combo._selected = list(self._all_departments)
+            self._view_dept_combo._update_display_label()
 
-        for i in range(self._edit_dept_list.count()):
-            item = self._edit_dept_list.item(i)
-            if item.text() in self._user.edit_departments:
-                item.setSelected(True)
+        if self._user.edit_departments:
+            self._edit_dept_combo._selected = list(self._user.edit_departments)
+            self._edit_dept_combo._update_display_label()
+        else:
+            # Empty means all departments - select all
+            self._edit_dept_combo._selected = list(self._all_departments)
+            self._edit_dept_combo._update_display_label()
 
     def _on_role_changed(self, role: str):
         """Show/hide departments based on role."""
@@ -692,6 +692,9 @@ class UserDialog(QDialog):
         # Editor: two department lists (view + edit)
         show_editor_depts = role == UserRole.EDITOR.value
         self._editor_dept_group.setVisible(show_editor_depts)
+
+        # Resize dialog to fit content
+        self.adjustSize()
 
     def _on_save(self):
         """Save user."""
@@ -708,27 +711,30 @@ class UserDialog(QDialog):
             return
 
         # Get selected departments based on role
+        # If all departments are selected, save empty list (means unrestricted)
         departments = []
         view_departments = []
         edit_departments = []
 
         if role in [UserRole.RESTRICTED.value, UserRole.VIEWER.value]:
-            departments = [
-                self._dept_list.item(i).text()
-                for i in range(self._dept_list.count())
-                if self._dept_list.item(i).isSelected()
-            ]
+            selected = self._dept_combo.get_selected()
+            # Empty list means unrestricted (all selected)
+            if len(selected) == len(self._all_departments):
+                departments = []
+            else:
+                departments = selected
         elif role == UserRole.EDITOR.value:
-            view_departments = [
-                self._view_dept_list.item(i).text()
-                for i in range(self._view_dept_list.count())
-                if self._view_dept_list.item(i).isSelected()
-            ]
-            edit_departments = [
-                self._edit_dept_list.item(i).text()
-                for i in range(self._edit_dept_list.count())
-                if self._edit_dept_list.item(i).isSelected()
-            ]
+            view_selected = self._view_dept_combo.get_selected()
+            edit_selected = self._edit_dept_combo.get_selected()
+            # Empty list means unrestricted (all selected)
+            if len(view_selected) == len(self._all_departments):
+                view_departments = []
+            else:
+                view_departments = view_selected
+            if len(edit_selected) == len(self._all_departments):
+                edit_departments = []
+            else:
+                edit_departments = edit_selected
 
         if self._is_new:
             user = self._auth.create_user(
