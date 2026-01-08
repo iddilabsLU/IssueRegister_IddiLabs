@@ -1,0 +1,99 @@
+# =====================================================
+# Issue Register - .gitignore
+# =====================================================
+
+# --------------------- Python ---------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# --------------------- Virtual Environment ---------------------
+venv/
+env/
+ENV/
+.venv/
+
+# --------------------- PyInstaller ---------------------
+# Build artifacts
+build/
+dist/
+*.spec
+
+# --------------------- IDE / Editor ---------------------
+# VS Code
+.vscode/
+
+# PyCharm / JetBrains
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# --------------------- Database ---------------------
+# SQLite database files (contain user data)
+*.db
+*.db-wal
+*.db-shm
+
+# --------------------- Testing ---------------------
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --------------------- Distribution ---------------------
+*.egg-info/
+*.egg
+.eggs/
+MANIFEST
+
+# --------------------- OS Generated ---------------------
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+
+# --------------------- Temporary Files ---------------------
+*.tmp
+*.temp
+*.log
+*.bak
+
+# --------------------- Misc ---------------------
+# Local configuration (if any)
+.env
+.env.local
+*.local
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# mypy
+.mypy_cache/
+
+# --------------------- Claude Code ---------------------
+# Claude Code local settings (optional - remove if you want to share settings)
+.claude/
