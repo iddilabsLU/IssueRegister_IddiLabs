@@ -6,9 +6,12 @@ An open-source desktop application for tracking issues across organisational dep
 
 - **Issue Tracking**: Complete lifecycle management from Draft to Closed
 - **Role-Based Access Control**: Administrator, Editor, Restricted, and Viewer roles
+- **File Attachments**: Attach supporting documents to issues
 - **Dashboard Analytics**: KPIs, charts, and progress tracking
 - **Excel Integration**: Import/export issues to Excel
+- **Audit Logging**: Track all changes with exportable audit trail
 - **Local Database**: SQLite for data sovereignty
+- **Flexible Database Location**: Choose where to store your database
 - **Shared Access**: Optional multi-user via network folder
 
 ## Installation

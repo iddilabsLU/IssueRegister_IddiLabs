@@ -1,18 +1,19 @@
 # Issue Register — Product Specification
 
-> **Version:** 1.1  
-> **Status:** Draft  
-> **License:** Open Source  
+> **Version:** 2.0
+> **Status:** Implemented
+> **Last Updated:** 2026-01-09
+> **License:** Open Source
 
-An open-source desktop application for tracking issues across organisational departments from identification through closure. Locally installable with optional shared database access.
+An open-source desktop application for tracking issues across organisational departments from identification through closure. Locally installable with optional shared database access, file attachments, and comprehensive audit logging.
 
 ---
 
 ## Executive Summary
 
-Issue Register is a privacy-first issue tracking system designed for regulated industries and organisations requiring local data control. It provides comprehensive issue lifecycle management, role-based access control, and analytical dashboards — all without reliance on cloud infrastructure.
+Issue Register is a privacy-first issue tracking system designed for regulated industries and organisations requiring local data control. It provides comprehensive issue lifecycle management, role-based access control, file attachment management, audit logging, and analytical dashboards — all without reliance on cloud infrastructure.
 
-**Core value proposition:** Data sovereignty through local installation with optional team collaboration via shared SQLite database.
+**Core value proposition:** Data sovereignty through local installation with optional team collaboration via shared SQLite database. Complete audit trail for compliance requirements.
 
 ---
 
@@ -20,12 +21,13 @@ Issue Register is a privacy-first issue tracking system designed for regulated i
 
 | Component | Technology |
 |-----------|------------|
-| Language | Python 3.11+ |
+| Language | Python 3.13+ (compatible with 3.11+) |
 | UI Framework | PySide6 (Qt6) |
 | Database | SQLite (file-based, shareable via network folders) |
-| Charts | QtCharts or Matplotlib |
+| Charts | QtCharts |
 | Excel I/O | openpyxl |
 | Authentication | bcrypt (password hashing) |
+| Configuration | JSON file in %APPDATA% |
 | Packaging | PyInstaller → single .exe |
 
 **Why this stack:**
@@ -39,6 +41,11 @@ Issue Register is a privacy-first issue tracking system designed for regulated i
 - Enable WAL (Write-Ahead Logging) mode for better concurrent access
 - Suitable for teams under 10 concurrent users
 - Database file can be placed on shared network folder for multi-user access
+- Database path stored in `%APPDATA%\IssueRegister\config.json` (persists across sessions)
+
+**File storage:**
+- Attachments stored in `attachments/` folder adjacent to database file
+- Portable: moving database folder includes all attachments
 
 ---
 
@@ -55,6 +62,19 @@ The application comprises four primary views accessible through segmented naviga
 
 ## 1. Login Page
 
+### First Launch — Database Selection
+
+On first launch (or when no valid database path is saved), the application displays a **Database Selection Dialog**:
+
+| Element | Description |
+|---------|-------------|
+| Open Existing Database | QFileDialog to browse for existing .db file |
+| Create New Database | QFileDialog to choose location for new database |
+| Location display | Shows selected path with status indicator |
+| Connect button | Proceeds to login after selection |
+
+The selected path is saved to `%APPDATA%\IssueRegister\config.json` for future sessions.
+
 ### Authentication Components
 
 | Element | Description |
@@ -63,6 +83,7 @@ The application comprises four primary views accessible through segmented naviga
 | Password field | QLineEdit with echo mode set to Password |
 | Login button | QPushButton, primary action |
 | Forgot Password link | QLabel with link styling, initiates recovery |
+| Change Database link | Opens database selection dialog |
 
 ### Password Recovery Workflow
 
@@ -75,11 +96,23 @@ Password recovery uses a master password system:
 
 This approach eliminates dependency on email infrastructure while maintaining security.
 
+### Force Password Change
+
+When a user's account is flagged for password change:
+
+1. User logs in with current credentials
+2. Change Password dialog appears immediately (cannot be dismissed)
+3. User must enter current password and choose new password
+4. Only after successful change can user access the application
+
+Administrators can flag any user for forced password change via Settings.
+
 ### Default Credentials
 
 | Account | Username | Password |
 |---------|----------|----------|
 | Administrator | `admin` | `admin` |
+| Master Password | — | `masterpass123` |
 
 **Important:** Administrators should change default credentials immediately upon first login.
 
@@ -115,6 +148,7 @@ The Issue Register serves as the primary data management interface, providing co
 ### SQLite Schema
 
 ```sql
+-- Issues table
 CREATE TABLE issues (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -133,23 +167,38 @@ CREATE TABLE issues (
     follow_up_date DATE,
     updates TEXT,
     closing_date DATE,
-    supporting_docs TEXT,
+    supporting_docs TEXT,              -- JSON array of filenames
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Users table
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     role TEXT CHECK(role IN ('Administrator', 'Editor', 'Restricted', 'Viewer')) DEFAULT 'Viewer',
-    departments TEXT,  -- JSON array for department restrictions
+    departments TEXT,                   -- JSON array for department restrictions
+    force_password_change INTEGER DEFAULT 0,  -- Flag to require password change on login
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Settings table
 CREATE TABLE settings (
     key TEXT PRIMARY KEY,
     value TEXT
+);
+
+-- Audit log table
+CREATE TABLE audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    action TEXT NOT NULL,               -- e.g., 'ISSUE_CREATED', 'USER_UPDATED'
+    entity_type TEXT NOT NULL,          -- e.g., 'issue', 'user', 'settings'
+    entity_id INTEGER,
+    details TEXT,                       -- JSON with change details
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for common queries
@@ -157,6 +206,11 @@ CREATE INDEX idx_issues_status ON issues(status);
 CREATE INDEX idx_issues_department ON issues(department);
 CREATE INDEX idx_issues_due_date ON issues(due_date);
 CREATE INDEX idx_issues_risk_level ON issues(risk_level);
+CREATE INDEX idx_issues_owner ON issues(owner);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
+CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
+CREATE INDEX idx_audit_log_user ON audit_log(user_id);
 ```
 
 ### Register Table View
@@ -183,18 +237,22 @@ The register displays issues in a QTableView with the following visible columns:
 
 ### Filter System
 
-A filter panel (QGroupBox) enables narrowing the displayed issues:
+A collapsible filter panel enables narrowing the displayed issues. The panel can be collapsed to a vertical strip showing "FILTERS" text to maximise table space.
 
 | Filter | Widget Type |
 |--------|-------------|
-| Status | QComboBox (multi-select via checkboxes) |
-| Identified By | QComboBox (multi-select) |
-| Owner | QComboBox (multi-select) |
-| Department | QComboBox (multi-select) |
-| Risk Level | QComboBox (multi-select) |
+| Status | MultiSelectComboBox (checkboxes) |
+| Identified By | MultiSelectComboBox |
+| Owner | MultiSelectComboBox |
+| Department | MultiSelectComboBox |
+| Risk Level | MultiSelectComboBox |
+| Identification Date | QDateEdit (from/to range) |
 | Due Date | QDateEdit (from/to range) |
 
-**Filter logic:** Multiple filters operate with AND logic — only issues matching all selected criteria appear.
+**Filter logic:**
+- Within a filter: OR logic (selecting "Open" and "Closed" shows both)
+- Between filters: AND logic (Department="IT" AND Status="Open")
+- Only issues matching all filter criteria appear
 
 ### Issue Creation
 
@@ -212,11 +270,55 @@ A filter panel (QGroupBox) enables narrowing the displayed issues:
 - Exports all issues user has permission to view
 - Respects active filters
 
+### File Attachments
+
+Each issue can have multiple supporting documents attached. Files are managed through the Issue Detail View.
+
+**Storage structure:**
+```
+database_folder/
+├── issue_register.db
+└── attachments/
+    ├── 1/                    # Files for issue #1
+    │   ├── report.pdf
+    │   └── screenshot.png
+    ├── 2/                    # Files for issue #2
+    ├── _deleted/             # Soft-deleted files (recoverable)
+    │   └── 1/
+    │       └── old_doc.pdf
+    └── _staging/             # Temporary files for new issues
+        └── {uuid}/
+```
+
+**File operations:**
+
+| Action | Behaviour |
+|--------|-----------|
+| Add File | Copies file to `attachments/{issue_id}/`. Handles duplicates with numbering (e.g., `report (2).pdf`) |
+| Open File | Copies to user's Downloads folder and opens with system default application |
+| Remove File | Moves to `_deleted/{issue_id}/` (soft delete, not permanent) |
+
+**New issue workflow:**
+1. Files attached before saving go to `_staging/{uuid}/`
+2. On issue save, files migrate to `attachments/{issue_id}/`
+3. On cancel, staging folder is cleaned up
+
+**UI components:**
+- QListWidget showing attached files with icons
+- Add button opens QFileDialog
+- Open button copies to Downloads and launches
+- Remove button (with confirmation) performs soft delete
+
 ---
 
 ## 3. Dashboard
 
-The dashboard provides real-time analytics based on user access permissions and active filters from the Issue Register. All visualisations update automatically when underlying data changes.
+The dashboard provides real-time analytics based on user access permissions. All visualisations update automatically when underlying data changes.
+
+**Features:**
+- Independent collapsible filter panel (same filters as Issue Register)
+- Filters affect all KPI cards and charts simultaneously
+- Real-time updates when data changes
 
 ### KPI Cards (Top Row)
 
@@ -261,10 +363,19 @@ Use QtCharts QStackedBarSeries or Matplotlib:
 
 ### Database Configuration
 
-QLineEdit with QFileDialog browse button for database path.
+Database path display with buttons for switching databases:
 
-- **Existing database found:** Application connects and prompts for authentication if required
-- **No database exists:** Application creates a copy of current database at specified location
+| Element | Description |
+|---------|-------------|
+| Current Database | Read-only QLineEdit showing current path |
+| Status indicator | Shows "Connected" with green text |
+| Open Existing Database | Browse for different .db file |
+| Create New Database | Create new database at chosen location |
+
+When switching databases:
+- Application reconnects to selected database
+- User must re-authenticate if authentication is enabled
+- New path is saved to config file for future sessions
 
 ### Authentication Management
 
@@ -281,12 +392,17 @@ By default, all users have administrator access and authentication is disabled.
 
 | Role | Permissions |
 |------|-------------|
-| **Administrator** | Full system access: user management, database configuration, backup import, bulk import, all issue operations |
-| **Editor** | Full editing access to all issue fields across all departments. Can create, modify, and close issues. Can change status to Closed |
+| **Administrator** | Full system access: user management, database configuration, backup import, bulk import, all issue operations, audit log export |
+| **Editor** | Editing access to issues (can be restricted by department). Can create, modify, and close issues. Can export audit log. Separate View and Edit department restrictions |
 | **Restricted** | Limited to assigned department(s). Can create draft issues. Can edit: Status (Open/In Progress/Remediated only), Updates, Supporting Documentation, Follow-up Date. Cannot modify Closed or Draft issues |
 | **Viewer** | Read-only access. Can view issues within assigned department(s) or all issues if granted full access. Cannot create or modify issues |
 
-**Department restrictions:** When assigning Viewer or Restricted roles, administrators select departments via multi-select QListWidget.
+**Department restrictions:**
+- **Administrator:** No restrictions (full access)
+- **Editor:** Separate "View Departments" and "Edit Departments" lists. Empty list = all departments
+- **Restricted/Viewer:** Single department list applies to both viewing and editing
+
+**User table display:** Shows columns for Username, Role, Editor Rights, and Viewer Rights for easy access review.
 
 ### Status Transition Logic
 
@@ -301,11 +417,29 @@ Draft ──[Editor/Admin]──> Open ──[Any with access]──> In Progres
 - Restricted users can transition between Open, In Progress, and Remediated
 - Remediated → Closed requires Editor or Administrator (review gate)
 
+### User Management (Administrator only)
+
+| Action | Description |
+|--------|-------------|
+| Add User | Create new user with username, password, role, and department restrictions |
+| Edit User | Modify user details including role and departments |
+| Delete User | Remove user account (with confirmation) |
+| Force Password Change | Checkbox to require user to change password on next login |
+| Search | Filter user list by username |
+
 ### Data Management
 
 #### Backup Export
 - All users can export backup of issues they have permission to view
-- Uses shutil to copy database file or openpyxl for Excel format
+- Uses openpyxl for Excel format
+
+#### Export Users (Administrator only)
+- Exports user list to Excel file
+- Includes: Username, Role, Departments
+
+#### Export Audit Log (Administrator and Editor)
+- Exports complete audit trail to Excel
+- Includes: Timestamp, User, Action, Entity Type, Entity ID, Details
 
 #### Backup Import (Administrator only)
 - Import backup files to restore database
@@ -319,6 +453,24 @@ Draft ──[Editor/Admin]──> Open ──[Any with access]──> In Progres
 - Issue IDs auto-generated (import file IDs ignored)
 - Invalid field values result in empty fields (no import errors)
 - QMessageBox displays success count and fields requiring correction
+
+### Audit Logging
+
+All significant actions are automatically logged to the `audit_log` table:
+
+| Action Type | What's Logged |
+|-------------|---------------|
+| Issue Created | New issue details |
+| Issue Updated | Changed fields |
+| Issue Deleted | Deleted issue info |
+| Status Changed | Old and new status |
+| User Created | New user details |
+| User Updated | Changed user info |
+| User Deleted | Deleted user info |
+| Settings Changed | Configuration changes |
+| Login/Logout | Authentication events |
+
+Audit logs cannot be modified or deleted. Export is the only way to access historical data.
 
 ---
 
@@ -467,23 +619,40 @@ Single Windows executable (.exe) built with PyInstaller, bundling Python runtime
 
 ### Build Command
 
+Using the spec file (recommended):
 ```bash
-pyinstaller --onefile --windowed --name "IssueRegister" --icon=icon.ico main.py
+pyinstaller IssueRegister.spec --clean
 ```
+
+Or using build script:
+```bash
+build.bat
+```
+
+The spec file includes all necessary hidden imports for PySide6, bcrypt, openpyxl, and ctypes (for file attachment features).
 
 ### Deployment Workflow (Team Environment)
 
-1. **Administrator Setup:** Install application, configure database location to shared network folder
+1. **Administrator Setup:** Run application, select/create database on shared network folder
 2. **Enable Authentication:** Activate user authentication in Settings
 3. **Create User Accounts:** Establish accounts with appropriate role assignments
-4. **Distribute Credentials:** Provide users with login credentials
-5. **User Installation:** Users copy .exe to their laptops (no installation required)
-6. **Connect to Shared Database:** Users configure database path in Settings to shared location
+4. **Distribute Application:** Share .exe with team members (no installation required)
+5. **User First Launch:** Application prompts for database selection
+6. **Connect to Shared Database:** Users browse to shared network database location
 7. **Authenticate:** Users log in with provided credentials
+
+**Note:** Each user's database path is saved locally in `%APPDATA%\IssueRegister\config.json`.
 
 ### Standalone Operation
 
-For individual users, the application functions without network requirements. Local SQLite database provides complete functionality.
+For individual users, the application functions without network requirements. On first launch, user selects where to create the local database. Complete functionality available offline.
+
+### File Attachments in Shared Environment
+
+When using a shared database on a network folder:
+- The `attachments/` folder is created alongside the database
+- All users access the same attachment files
+- Ensure all users have read/write permissions to the folder
 
 ---
 
@@ -516,49 +685,71 @@ For individual users, the application functions without network requirements. Lo
 issue-register/
 ├── src/
 │   ├── __init__.py
-│   ├── main.py              # Application entry point
+│   ├── main.py                  # Application entry point
 │   ├── database/
 │   │   ├── __init__.py
-│   │   ├── connection.py    # SQLite connection management
-│   │   ├── models.py        # Data classes for Issue, User
-│   │   └── queries.py       # SQL query functions
+│   │   ├── connection.py        # SQLite connection management (singleton)
+│   │   ├── migrations.py        # Schema creation and migrations
+│   │   ├── models.py            # Data classes for Issue, User, enums
+│   │   └── queries.py           # SQL query functions
 │   ├── ui/
 │   │   ├── __init__.py
-│   │   ├── main_window.py   # QMainWindow setup
-│   │   ├── login.py         # Login dialog
-│   │   ├── register.py      # Issue register view
-│   │   ├── dashboard.py     # Dashboard view
-│   │   ├── settings.py      # Settings view
-│   │   ├── issue_dialog.py  # Issue detail/edit dialog
-│   │   └── widgets/         # Custom reusable widgets
-│   │       ├── kpi_card.py
-│   │       ├── filter_panel.py
-│   │       └── charts.py
+│   │   ├── main_window.py       # QMainWindow with navigation
+│   │   ├── login.py             # Login + DatabaseSelectionDialog
+│   │   ├── register.py          # Issue register view
+│   │   ├── dashboard.py         # Dashboard view
+│   │   ├── settings.py          # Settings + ChangePasswordDialog + UserDialog
+│   │   ├── issue_dialog.py      # Issue detail/edit dialog
+│   │   ├── bulk_delete_dialog.py # Bulk delete confirmation
+│   │   └── widgets/             # Custom reusable widgets
+│   │       ├── __init__.py
+│   │       ├── kpi_card.py      # KPI card component
+│   │       ├── filter_panel.py  # Collapsible filter panel + MultiSelectComboBox
+│   │       └── charts.py        # QtCharts wrappers
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── auth.py          # Authentication logic
-│   │   ├── permissions.py   # Role-based access control
-│   │   └── export.py        # Excel export/import
+│   │   ├── auth.py              # Authentication logic
+│   │   ├── audit.py             # Audit logging service
+│   │   ├── config.py            # App configuration (database path)
+│   │   ├── export.py            # Excel export/import
+│   │   ├── file_service.py      # File attachment management
+│   │   ├── issue_service.py     # Issue CRUD and business logic
+│   │   └── permissions.py       # Role-based access control
 │   └── resources/
-│       ├── styles.qss       # Qt stylesheet
-│       └── icons/           # Application icons
+│       └── styles.qss           # Qt stylesheet
 ├── tests/
-│   ├── test_database.py
 │   ├── test_auth.py
-│   └── test_export.py
+│   ├── test_audit.py
+│   ├── test_database.py
+│   ├── test_export.py
+│   ├── test_issue_service.py
+│   └── test_permissions.py
 ├── requirements.txt
-├── pyproject.toml
+├── requirements-dev.txt
+├── IssueRegister.spec           # PyInstaller spec file
+├── build.bat                    # Build script
 ├── SPECIFICATION.md
-├── README.md
-└── build.bat               # PyInstaller build script
+├── CLAUDE.md                    # Development guidelines
+├── BUILD.md                     # Build instructions
+├── FIXES.md                     # Enhancement history
+└── README.md
 ```
 
 ### Dependencies (requirements.txt)
 
 ```
-PySide6>=6.6.0
+PySide6>=6.8.0
 bcrypt>=4.1.0
 openpyxl>=3.1.0
+```
+
+### Development Dependencies (requirements-dev.txt)
+
+```
+pytest>=8.0.0
+pytest-qt>=4.3.0
+pytest-cov>=4.1.0
+pyinstaller>=6.0.0
 ```
 
 ### Minimum System Requirements

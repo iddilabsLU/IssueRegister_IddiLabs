@@ -1,8 +1,42 @@
 # Issue Register — Bug Fixes and Enhancements
 
 > **Status:** COMPLETE
-> **Last Updated:** 2025-12-31
+> **Last Updated:** 2026-01-09
 > **All items below have been implemented and tested.**
+
+---
+
+## Recent Additions (January 2026)
+
+### File Attachment Service
+**Status:** COMPLETE
+**Implementation:** `src/services/file_service.py`
+- Attach files to issues (copies to `attachments/{issue_id}/`)
+- Open files (copies to Downloads, opens with system app)
+- Remove files (soft delete to `_deleted/` folder)
+- Staging system for new issues (`_staging/{uuid}/`)
+
+### Force Password Change
+**Status:** COMPLETE
+**Implementation:** `src/database/migrations.py:135-146`, `src/ui/settings.py:974+`
+- `force_password_change` column added to users table
+- Admin can flag users to change password on next login
+- `ChangePasswordDialog` with forced mode blocks until changed
+
+### Database Selection Dialog
+**Status:** COMPLETE
+**Implementation:** `src/ui/login.py:288-485`, `src/services/config.py`
+- First-launch dialog for database selection/creation
+- Config service stores path in `%APPDATA%\IssueRegister\`
+- Change database from Login screen or Settings
+
+### Enhanced Dashboard Charts
+**Status:** COMPLETE
+**Implementation:** `src/ui/widgets/charts.py`, `src/ui/dashboard.py`
+- Status distribution pie chart
+- Risk level breakdown
+- Department distribution
+- Improved data aggregation
 
 ---
 

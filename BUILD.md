@@ -38,6 +38,12 @@ pip install pyinstaller
 
 ### 3. Run PyInstaller
 
+Using the spec file (recommended):
+```batch
+pyinstaller IssueRegister.spec --clean
+```
+
+Or manually:
 ```batch
 pyinstaller --onefile ^
     --windowed ^
@@ -46,8 +52,12 @@ pyinstaller --onefile ^
     --hidden-import "PySide6.QtCharts" ^
     --hidden-import "bcrypt" ^
     --hidden-import "openpyxl" ^
+    --hidden-import "ctypes" ^
+    --hidden-import "ctypes.wintypes" ^
     src/main.py
 ```
+
+The `IssueRegister.spec` file is pre-configured with all necessary hidden imports for file attachments and other features.
 
 ### 4. Find the Executable
 
@@ -102,7 +112,19 @@ If you see Qt plugin errors, add these hidden imports:
 
 The built executable (`dist\IssueRegister.exe`) is self-contained and can be distributed to users without requiring Python installation.
 
-The application will create its database file (`issue_register.db`) in the same directory as the executable on first run.
+On first run, the application will prompt the user to select or create a database location. The chosen path is saved in `%APPDATA%\IssueRegister\config.json`.
+
+### File Attachments
+
+When users attach files to issues, the files are copied to an `attachments` folder next to the database:
+```
+database_folder/
+├── issue_register.db
+└── attachments/
+    ├── 1/           # Files for issue #1
+    ├── 2/           # Files for issue #2
+    └── _deleted/    # Soft-deleted files
+```
 
 ## Development vs Production
 
