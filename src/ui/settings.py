@@ -93,6 +93,25 @@ class SettingsView(QWidget):
 
         main_layout.addWidget(db_group)
 
+        # My Account Section (visible to all users)
+        account_group = QGroupBox("My Account")
+        account_layout = QVBoxLayout(account_group)
+
+        # Current user info
+        self._user_info_label = QLabel("Not logged in")
+        account_layout.addWidget(self._user_info_label)
+
+        # Change password button
+        change_pw_layout = QHBoxLayout()
+        change_pw_label = QLabel("Update your login password:")
+        change_pw_layout.addWidget(change_pw_label)
+        change_pw_layout.addStretch()
+        self._change_password_btn = QPushButton("Change Password")
+        change_pw_layout.addWidget(self._change_password_btn)
+        account_layout.addLayout(change_pw_layout)
+
+        main_layout.addWidget(account_group)
+
         # Authentication Settings
         self._auth_group = QGroupBox("Authentication Settings")
         auth_layout = QVBoxLayout(self._auth_group)
@@ -247,6 +266,7 @@ class SettingsView(QWidget):
         """Connect UI signals."""
         self._open_existing_btn.clicked.connect(self._on_open_existing_database)
         self._create_new_btn.clicked.connect(self._on_create_new_database)
+        self._change_password_btn.clicked.connect(self._on_change_password)
         self._auth_checkbox.stateChanged.connect(self._on_auth_changed)
         self._change_master_pw_btn.clicked.connect(self._on_change_master_password)
         self._user_search_edit.textChanged.connect(self._on_user_search_changed)
@@ -264,7 +284,17 @@ class SettingsView(QWidget):
         """Set current user and update permissions."""
         self._user = user
         self._apply_permissions()
+        self._update_user_info()
         self.refresh()
+
+    def _update_user_info(self):
+        """Update user info display."""
+        if self._user:
+            self._user_info_label.setText(
+                f"Logged in as: {self._user.username} ({self._user.role})"
+            )
+        else:
+            self._user_info_label.setText("Not logged in")
 
     def _apply_permissions(self):
         """Apply permission-based visibility."""
@@ -429,6 +459,11 @@ class SettingsView(QWidget):
     def _on_change_master_password(self):
         """Open dialog to change master password."""
         dialog = ChangeMasterPasswordDialog(parent=self)
+        dialog.exec()
+
+    def _on_change_password(self):
+        """Open dialog for user to change their own password."""
+        dialog = ChangePasswordDialog(forced=False, parent=self)
         dialog.exec()
 
     def _on_add_user(self):
@@ -672,12 +707,31 @@ class UserDialog(QDialog):
         self._username_edit = QLineEdit()
         form.addRow("Username:", self._username_edit)
 
-        self._password_edit = QLineEdit()
-        self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        self._password_edit.setPlaceholderText(
-            "Enter password" if self._is_new else "Leave blank to keep current"
-        )
-        form.addRow("Password:", self._password_edit)
+        # Password section - different for new vs edit
+        if self._is_new:
+            self._password_edit = QLineEdit()
+            self._password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+            self._password_edit.setPlaceholderText("Enter password")
+            form.addRow("Password:", self._password_edit)
+
+            # Force password change checkbox (default checked for new users)
+            self._force_pw_checkbox = QCheckBox("Require password change on first login")
+            self._force_pw_checkbox.setChecked(True)
+            self._force_pw_checkbox.setToolTip(
+                "When checked, user must change their password after first login"
+            )
+            form.addRow("", self._force_pw_checkbox)
+        else:
+            # For existing users, show Reset Password button
+            self._password_edit = None  # No direct password edit
+            self._force_pw_checkbox = None
+
+            pw_layout = QHBoxLayout()
+            self._reset_pw_btn = QPushButton("Reset Password")
+            self._reset_pw_btn.clicked.connect(self._on_reset_password)
+            pw_layout.addWidget(self._reset_pw_btn)
+            pw_layout.addStretch()
+            form.addRow("Password:", pw_layout)
 
         self._role_combo = QComboBox()
         for role in UserRole.values():
@@ -802,19 +856,40 @@ class UserDialog(QDialog):
         # Resize dialog to fit content
         self.adjustSize()
 
+    def _on_reset_password(self):
+        """Reset password for existing user (admin function)."""
+        dialog = ResetPasswordDialog(self._user.username, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_password = dialog.get_password()
+            force_change = dialog.get_force_change()
+
+            if self._auth.reset_user_password(self._user.id, new_password, force_change):
+                msg = f"Password for '{self._user.username}' has been reset."
+                if force_change:
+                    msg += "\nUser will be required to change password on next login."
+                QMessageBox.information(self, "Password Reset", msg)
+            else:
+                QMessageBox.critical(self, "Error", "Failed to reset password.")
+
     def _on_save(self):
         """Save user."""
         username = self._username_edit.text().strip()
-        password = self._password_edit.text()
         role = self._role_combo.currentText()
 
         if not username:
             QMessageBox.warning(self, "Validation", "Username is required.")
             return
 
-        if self._is_new and not password:
-            QMessageBox.warning(self, "Validation", "Password is required for new users.")
-            return
+        # Get password only for new users
+        password = None
+        force_password_change = True
+        if self._is_new:
+            password = self._password_edit.text()
+            force_password_change = self._force_pw_checkbox.isChecked()
+
+            if not password:
+                QMessageBox.warning(self, "Validation", "Password is required for new users.")
+                return
 
         # Get selected departments based on role
         # If all departments are selected, save empty list (means unrestricted)
@@ -847,7 +922,8 @@ class UserDialog(QDialog):
                 user = self._auth.create_user(
                     username, password, role, departments,
                     view_departments=view_departments,
-                    edit_departments=edit_departments
+                    edit_departments=edit_departments,
+                    force_password_change=force_password_change
                 )
                 if not user:
                     QMessageBox.critical(
@@ -866,7 +942,6 @@ class UserDialog(QDialog):
                 user = self._auth.update_user(
                     self._user.id,
                     username=username,
-                    password=password if password else None,
                     role=role,
                     departments=departments,
                     view_departments=view_departments,
@@ -894,6 +969,249 @@ class UserDialog(QDialog):
                 "Error",
                 f"An error occurred while saving the user:\n{str(e)}"
             )
+
+
+class ChangePasswordDialog(QDialog):
+    """Dialog for users to change their own password."""
+
+    def __init__(self, forced: bool = False, parent=None):
+        """
+        Initialize change password dialog.
+
+        Args:
+            forced: If True, user cannot cancel (must change password)
+            parent: Parent widget
+        """
+        super().__init__(parent)
+
+        self._auth = get_auth_service()
+        self._forced = forced
+
+        self._setup_ui()
+        self._connect_signals()
+
+    def _setup_ui(self):
+        """Set up dialog UI."""
+        self.setWindowTitle("Change Password")
+        self.setMinimumWidth(400)
+
+        if self._forced:
+            # Prevent closing without changing password
+            self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        # Instructions
+        if self._forced:
+            instructions = QLabel(
+                "You must change your password before continuing.\n"
+                "Please enter your current password and choose a new one."
+            )
+            instructions.setStyleSheet("color: #B91C1C;")
+        else:
+            instructions = QLabel(
+                "Enter your current password and choose a new password."
+            )
+        instructions.setWordWrap(True)
+        layout.addWidget(instructions)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+
+        self._current_pw_edit = QLineEdit()
+        self._current_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._current_pw_edit.setPlaceholderText("Enter current password")
+        form.addRow("Current Password:", self._current_pw_edit)
+
+        self._new_pw_edit = QLineEdit()
+        self._new_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._new_pw_edit.setPlaceholderText("Enter new password")
+        form.addRow("New Password:", self._new_pw_edit)
+
+        self._confirm_pw_edit = QLineEdit()
+        self._confirm_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._confirm_pw_edit.setPlaceholderText("Confirm new password")
+        form.addRow("Confirm Password:", self._confirm_pw_edit)
+
+        layout.addLayout(form)
+
+        # Password requirements note
+        note = QLabel("Password must be at least 6 characters.")
+        note.setProperty("muted", True)
+        layout.addWidget(note)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        if not self._forced:
+            cancel_btn = QPushButton("Cancel")
+            cancel_btn.clicked.connect(self.reject)
+            btn_layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("Change Password")
+        save_btn.setProperty("primary", True)
+        save_btn.clicked.connect(self._on_save)
+        btn_layout.addWidget(save_btn)
+
+        layout.addLayout(btn_layout)
+
+    def _connect_signals(self):
+        """Connect signals."""
+        self._confirm_pw_edit.returnPressed.connect(self._on_save)
+
+    def _on_save(self):
+        """Save new password."""
+        current_pw = self._current_pw_edit.text()
+        new_pw = self._new_pw_edit.text()
+        confirm_pw = self._confirm_pw_edit.text()
+
+        # Validation
+        if not current_pw:
+            QMessageBox.warning(self, "Validation", "Please enter your current password.")
+            self._current_pw_edit.setFocus()
+            return
+
+        if not new_pw:
+            QMessageBox.warning(self, "Validation", "Please enter a new password.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if len(new_pw) < 6:
+            QMessageBox.warning(self, "Validation", "New password must be at least 6 characters.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if new_pw != confirm_pw:
+            QMessageBox.warning(self, "Validation", "New passwords do not match.")
+            self._confirm_pw_edit.setFocus()
+            return
+
+        if current_pw == new_pw:
+            QMessageBox.warning(self, "Validation", "New password must be different from current password.")
+            self._new_pw_edit.setFocus()
+            return
+
+        # Try to change password
+        success, error = self._auth.change_own_password(current_pw, new_pw)
+
+        if success:
+            QMessageBox.information(
+                self,
+                "Password Changed",
+                "Your password has been changed successfully."
+            )
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error", error)
+            self._current_pw_edit.clear()
+            self._current_pw_edit.setFocus()
+
+    def reject(self):
+        """Override reject to prevent closing when forced."""
+        if self._forced:
+            QMessageBox.warning(
+                self,
+                "Password Change Required",
+                "You must change your password before continuing."
+            )
+            return
+        super().reject()
+
+
+class ResetPasswordDialog(QDialog):
+    """Dialog for admin to reset a user's password."""
+
+    def __init__(self, username: str, parent=None):
+        super().__init__(parent)
+
+        self._username = username
+        self._password = ""
+        self._force_change = True
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        """Set up dialog UI."""
+        self.setWindowTitle("Reset Password")
+        self.setMinimumWidth(400)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        # Instructions
+        instructions = QLabel(f"Set a new password for user '{self._username}':")
+        layout.addWidget(instructions)
+
+        form = QFormLayout()
+        form.setSpacing(12)
+
+        self._new_pw_edit = QLineEdit()
+        self._new_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._new_pw_edit.setPlaceholderText("Enter new password")
+        form.addRow("New Password:", self._new_pw_edit)
+
+        self._confirm_pw_edit = QLineEdit()
+        self._confirm_pw_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self._confirm_pw_edit.setPlaceholderText("Confirm new password")
+        form.addRow("Confirm Password:", self._confirm_pw_edit)
+
+        layout.addLayout(form)
+
+        # Force password change checkbox
+        self._force_change_checkbox = QCheckBox("Require user to change password on next login")
+        self._force_change_checkbox.setChecked(True)
+        layout.addWidget(self._force_change_checkbox)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(cancel_btn)
+
+        reset_btn = QPushButton("Reset Password")
+        reset_btn.setProperty("primary", True)
+        reset_btn.clicked.connect(self._on_reset)
+        btn_layout.addWidget(reset_btn)
+
+        layout.addLayout(btn_layout)
+
+    def _on_reset(self):
+        """Handle reset button click."""
+        new_pw = self._new_pw_edit.text()
+        confirm_pw = self._confirm_pw_edit.text()
+
+        if not new_pw:
+            QMessageBox.warning(self, "Validation", "Please enter a new password.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if len(new_pw) < 6:
+            QMessageBox.warning(self, "Validation", "Password must be at least 6 characters.")
+            self._new_pw_edit.setFocus()
+            return
+
+        if new_pw != confirm_pw:
+            QMessageBox.warning(self, "Validation", "Passwords do not match.")
+            self._confirm_pw_edit.setFocus()
+            return
+
+        self._password = new_pw
+        self._force_change = self._force_change_checkbox.isChecked()
+        self.accept()
+
+    def get_password(self) -> str:
+        """Get the new password."""
+        return self._password
+
+    def get_force_change(self) -> bool:
+        """Get whether to force password change."""
+        return self._force_change
 
 
 class ChangeMasterPasswordDialog(QDialog):

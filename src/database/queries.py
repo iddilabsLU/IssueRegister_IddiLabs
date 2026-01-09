@@ -420,8 +420,8 @@ def create_user(user: User) -> User:
     now = datetime.now()
 
     sql = """
-        INSERT INTO users (username, password_hash, role, departments, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO users (username, password_hash, role, departments, force_password_change, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
     """
 
     # Use to_dict() for proper department serialization (handles Editor format)
@@ -432,6 +432,7 @@ def create_user(user: User) -> User:
         user.password_hash,
         user.role,
         user_dict["departments"],
+        user_dict["force_password_change"],
         now.isoformat(),
     )
 
@@ -467,7 +468,7 @@ def update_user(user: User) -> User:
 
     sql = """
         UPDATE users SET
-            username = ?, password_hash = ?, role = ?, departments = ?
+            username = ?, password_hash = ?, role = ?, departments = ?, force_password_change = ?
         WHERE id = ?
     """
 
@@ -479,6 +480,7 @@ def update_user(user: User) -> User:
         user.password_hash,
         user.role,
         user_dict["departments"],
+        user_dict["force_password_change"],
         user.id,
     )
 

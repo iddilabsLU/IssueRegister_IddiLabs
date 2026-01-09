@@ -206,6 +206,7 @@ class User:
         departments: List of departments for Restricted/Viewer roles
         view_departments: List of departments Editor can VIEW (empty = all)
         edit_departments: List of departments Editor can EDIT (empty = all)
+        force_password_change: If True, user must change password on next login
         created_at: Account creation timestamp
     """
     username: str
@@ -215,6 +216,7 @@ class User:
     departments: list[str] = field(default_factory=list)
     view_departments: list[str] = field(default_factory=list)
     edit_departments: list[str] = field(default_factory=list)
+    force_password_change: bool = False
     created_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:
@@ -235,6 +237,7 @@ class User:
             "password_hash": self.password_hash,
             "role": self.role,
             "departments": json.dumps(dept_data),
+            "force_password_change": 1 if self.force_password_change else 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -270,6 +273,14 @@ class User:
             elif isinstance(row["created_at"], str):
                 created_at = datetime.fromisoformat(row["created_at"])
 
+        # Parse force_password_change (handle missing column for old databases)
+        # SQLite Row raises IndexError (not KeyError) when column doesn't exist
+        force_password_change = False
+        try:
+            force_password_change = bool(row["force_password_change"])
+        except (KeyError, TypeError, IndexError):
+            pass
+
         return cls(
             id=row["id"],
             username=row["username"],
@@ -278,6 +289,7 @@ class User:
             departments=departments,
             view_departments=view_departments,
             edit_departments=edit_departments,
+            force_password_change=force_password_change,
             created_at=created_at,
         )
 

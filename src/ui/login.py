@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLineEdit, QPushButton, QLabel, QMessageBox, QFrame,
-    QFileDialog
+    QFileDialog, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
@@ -147,7 +147,26 @@ class LoginDialog(QDialog):
         if user:
             self._auth.login(user)
             self._logged_in_user = user
-            self.accept()
+
+            # Check if user must change password
+            if user.force_password_change:
+                from src.ui.settings import ChangePasswordDialog
+                dialog = ChangePasswordDialog(forced=True, parent=self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    # Password was changed, refresh user data
+                    from src.database import queries
+                    self._logged_in_user = queries.get_user(user.id)
+                    self._auth._current_user = self._logged_in_user
+                    self.accept()
+                else:
+                    # User didn't change password (shouldn't happen with forced=True)
+                    # But just in case, don't allow login
+                    self._auth.logout()
+                    self._logged_in_user = None
+                    self._show_error("You must change your password to continue")
+                    return
+            else:
+                self.accept()
         else:
             self._show_error("Invalid username or password")
             self._password_edit.clear()

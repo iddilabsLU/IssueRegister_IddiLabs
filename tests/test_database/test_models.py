@@ -301,3 +301,65 @@ class TestUserModel:
 
         # Access to None department is always allowed
         assert restricted.can_access_department(None) is True
+
+    def test_user_force_password_change_default(self):
+        """Test that force_password_change defaults to False."""
+        user = User(username="test", password_hash="hash")
+        assert user.force_password_change is False
+
+    def test_user_force_password_change_set(self):
+        """Test setting force_password_change."""
+        user = User(
+            username="test",
+            password_hash="hash",
+            force_password_change=True
+        )
+        assert user.force_password_change is True
+
+    def test_user_to_dict_with_force_password_change(self):
+        """Test that to_dict includes force_password_change."""
+        user = User(
+            username="test",
+            password_hash="hash",
+            force_password_change=True
+        )
+        data = user.to_dict()
+        assert data["force_password_change"] == 1
+
+        user.force_password_change = False
+        data = user.to_dict()
+        assert data["force_password_change"] == 0
+
+    def test_user_from_row_with_force_password_change(self):
+        """Test creating user from row with force_password_change."""
+        row = {
+            "id": 1,
+            "username": "testuser",
+            "password_hash": "hash",
+            "role": "Viewer",
+            "departments": "[]",
+            "force_password_change": 1,
+            "created_at": "2024-01-15T10:00:00",
+        }
+
+        user = User.from_row(row)
+        assert user.force_password_change is True
+
+        row["force_password_change"] = 0
+        user = User.from_row(row)
+        assert user.force_password_change is False
+
+    def test_user_from_row_missing_force_password_change(self):
+        """Test creating user from row without force_password_change column."""
+        row = {
+            "id": 1,
+            "username": "testuser",
+            "password_hash": "hash",
+            "role": "Viewer",
+            "departments": "[]",
+            "created_at": "2024-01-15T10:00:00",
+        }
+
+        # Should handle missing column gracefully (default to False)
+        user = User.from_row(row)
+        assert user.force_password_change is False

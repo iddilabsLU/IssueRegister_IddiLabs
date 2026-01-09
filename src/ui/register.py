@@ -219,6 +219,7 @@ class RegisterView(QWidget):
         self._export_btn.clicked.connect(self._on_export)
         self._refresh_btn.clicked.connect(self.refresh)
         self._filter_panel.filter_changed.connect(self._apply_filters)
+        self._filter_panel.delete_requested.connect(self._on_bulk_delete)
         self._table.doubleClicked.connect(self._on_row_double_click)
 
     def set_user(self, user: User):
@@ -229,6 +230,10 @@ class RegisterView(QWidget):
         # Update button visibility based on permissions
         can_create = self._permissions.can_create_issue(user)
         self._new_btn.setVisible(can_create)
+
+        # Show delete button only for administrators
+        can_delete = self._permissions.can_delete_issue(user)
+        self._filter_panel.set_delete_visible(can_delete)
 
         self.refresh()
 
@@ -326,3 +331,105 @@ class RegisterView(QWidget):
                 "Export Failed",
                 f"Failed to export issues:\n{error}"
             )
+
+    def _on_bulk_delete(self):
+        """Handle bulk delete request."""
+        if not self._user:
+            return
+
+        # Double-check permissions
+        if not self._permissions.can_delete_issue(self._user):
+            QMessageBox.critical(
+                self,
+                "Permission Denied",
+                "Only Administrators can delete issues."
+            )
+            return
+
+        # Get current filtered issues
+        filters = self._filter_panel.get_filters()
+        from src.services.issue_service import get_issue_service
+        issue_service = get_issue_service()
+
+        issues = issue_service.list_issues(self._user, **filters)
+
+        if not issues:
+            QMessageBox.information(
+                self,
+                "No Issues",
+                "There are no issues to delete with the current filters."
+            )
+            return
+
+        # Show confirmation dialog
+        from src.ui.bulk_delete_dialog import BulkDeleteDialog
+
+        dialog = BulkDeleteDialog(
+            issues=issues,
+            filters=filters,
+            user=self._user,
+            parent=self
+        )
+
+        if not dialog.exec():
+            return  # User cancelled
+
+        # Export if requested
+        if dialog.should_export():
+            export_path = dialog.get_export_path()
+            if export_path:
+                success, error = self._export.export_issues_to_excel(issues, export_path)
+                if not success:
+                    reply = QMessageBox.warning(
+                        self,
+                        "Export Failed",
+                        f"Failed to export issues:\n{error}\n\n"
+                        "Do you want to continue with deletion anyway?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+
+        # Perform deletion
+        deleted_count = 0
+        failed_count = 0
+        failed_issues = []
+
+        for issue in issues:
+            success, error = issue_service.delete_issue(self._user, issue.id)
+            if success:
+                deleted_count += 1
+            else:
+                failed_count += 1
+                failed_issues.append(f"ID {issue.id}: {error}")
+
+        # Log bulk delete action
+        from src.services.audit import get_audit_service
+        get_audit_service().log_bulk_delete(
+            self._user,
+            deleted_count,
+            filters
+        )
+
+        # Show result
+        if failed_count == 0:
+            QMessageBox.information(
+                self,
+                "Deletion Complete",
+                f"Successfully deleted {deleted_count} issue(s)."
+            )
+        else:
+            error_details = "\n".join(failed_issues[:5])  # Show first 5 errors
+            if len(failed_issues) > 5:
+                error_details += f"\n... and {len(failed_issues) - 5} more"
+
+            QMessageBox.warning(
+                self,
+                "Deletion Partially Complete",
+                f"Deleted {deleted_count} issue(s).\n"
+                f"Failed to delete {failed_count} issue(s):\n\n{error_details}"
+            )
+
+        # Refresh the view
+        self.refresh()

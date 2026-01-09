@@ -221,6 +221,143 @@ class TestUserManagement:
         assert still_exists is not None
 
 
+class TestForcePasswordChange:
+    """Test force password change functionality."""
+
+    def test_create_user_with_force_password_change(self, auth_service, db_connection):
+        """Test creating user with force_password_change flag."""
+        user = auth_service.create_user(
+            username="forcechangeuser",
+            password="temppassword",
+            force_password_change=True
+        )
+
+        assert user is not None
+        assert user.force_password_change is True
+
+    def test_create_user_without_force_password_change(self, auth_service, db_connection):
+        """Test creating user without force_password_change flag."""
+        user = auth_service.create_user(
+            username="noforceuser",
+            password="password",
+            force_password_change=False
+        )
+
+        assert user is not None
+        assert user.force_password_change is False
+
+    def test_default_force_password_change_is_true(self, auth_service, db_connection):
+        """Test that force_password_change defaults to True for new users."""
+        user = auth_service.create_user(
+            username="defaultforceuser",
+            password="password"
+        )
+
+        assert user is not None
+        assert user.force_password_change is True
+
+    def test_change_own_password_clears_force_flag(self, auth_service, db_connection):
+        """Test that changing own password clears force_password_change flag."""
+        # Create user with force flag
+        user = auth_service.create_user(
+            username="clearflaguser",
+            password="oldpassword",
+            force_password_change=True
+        )
+
+        # Login as the user
+        auth_service.login(user)
+
+        # Change own password
+        success, error = auth_service.change_own_password("oldpassword", "newpassword")
+
+        assert success is True
+        assert error == ""
+
+        # Verify flag is cleared
+        updated_user = queries.get_user(user.id)
+        assert updated_user.force_password_change is False
+
+    def test_change_own_password_wrong_current(self, auth_service, db_connection):
+        """Test changing own password with wrong current password fails."""
+        user = auth_service.create_user(
+            username="wrongcurrentuser",
+            password="correctpassword"
+        )
+
+        auth_service.login(user)
+
+        success, error = auth_service.change_own_password("wrongpassword", "newpassword")
+
+        assert success is False
+        assert "incorrect" in error.lower()
+
+    def test_change_own_password_not_logged_in(self, auth_service, db_connection):
+        """Test changing password when not logged in fails."""
+        success, error = auth_service.change_own_password("old", "new")
+
+        assert success is False
+        assert "logged in" in error.lower()
+
+    def test_reset_user_password_with_force(self, auth_service, db_connection):
+        """Test admin resetting user password with force flag."""
+        # Create a user
+        user = auth_service.create_user(
+            username="resetuser",
+            password="oldpassword",
+            force_password_change=False
+        )
+
+        # Reset password with force flag
+        result = auth_service.reset_user_password(user.id, "temppassword", force_change=True)
+
+        assert result is True
+
+        # Verify password changed
+        auth_result = auth_service.authenticate("resetuser", "temppassword")
+        assert auth_result is not None
+
+        # Verify force flag is set
+        updated_user = queries.get_user(user.id)
+        assert updated_user.force_password_change is True
+
+    def test_reset_user_password_without_force(self, auth_service, db_connection):
+        """Test admin resetting user password without force flag."""
+        user = auth_service.create_user(
+            username="resetnoforce",
+            password="oldpassword"
+        )
+
+        result = auth_service.reset_user_password(user.id, "newpassword", force_change=False)
+
+        assert result is True
+
+        updated_user = queries.get_user(user.id)
+        assert updated_user.force_password_change is False
+
+    def test_clear_force_password_change(self, auth_service, db_connection):
+        """Test clearing force_password_change flag."""
+        user = auth_service.create_user(
+            username="clearforceuser",
+            password="password",
+            force_password_change=True
+        )
+
+        assert user.force_password_change is True
+
+        result = auth_service.clear_force_password_change(user.id)
+
+        assert result is True
+
+        updated_user = queries.get_user(user.id)
+        assert updated_user.force_password_change is False
+
+    def test_clear_force_password_change_nonexistent_user(self, auth_service, db_connection):
+        """Test clearing flag for non-existent user returns False."""
+        result = auth_service.clear_force_password_change(99999)
+        assert result is False
+
+
 class TestSingleton:
     """Test singleton pattern."""
 

@@ -167,13 +167,14 @@ class AuthService:
 
         return self.verify_password(password, master_hash)
 
-    def change_password(self, user_id: int, new_password: str) -> bool:
+    def change_password(self, user_id: int, new_password: str, clear_force_flag: bool = True) -> bool:
         """
-        Change a user's password.
+        Change a user's password (admin function).
 
         Args:
             user_id: ID of user to update
             new_password: New plain text password
+            clear_force_flag: If True, clears the force_password_change flag
 
         Returns:
             True if successful
@@ -183,6 +184,80 @@ class AuthService:
             return False
 
         user.password_hash = self.hash_password(new_password)
+        if clear_force_flag:
+            user.force_password_change = False
+        queries.update_user(user)
+        return True
+
+    def change_own_password(self, current_password: str, new_password: str) -> tuple[bool, str]:
+        """
+        Change the current user's own password.
+
+        Args:
+            current_password: User's current password for verification
+            new_password: New password to set
+
+        Returns:
+            Tuple of (success: bool, error_message: str)
+        """
+        if not self._current_user:
+            return False, "No user logged in"
+
+        # Verify current password
+        if not self.verify_password(current_password, self._current_user.password_hash):
+            return False, "Current password is incorrect"
+
+        # Update password
+        self._current_user.password_hash = self.hash_password(new_password)
+        self._current_user.force_password_change = False
+        queries.update_user(self._current_user)
+
+        # Log the password change
+        get_audit_service().log_password_changed(self._current_user)
+
+        return True, ""
+
+    def reset_user_password(self, user_id: int, new_password: str, force_change: bool = True) -> bool:
+        """
+        Reset a user's password (admin function).
+
+        Args:
+            user_id: ID of user to reset
+            new_password: New temporary password
+            force_change: If True, user must change password on next login
+
+        Returns:
+            True if successful
+        """
+        user = queries.get_user(user_id)
+        if user is None:
+            return False
+
+        user.password_hash = self.hash_password(new_password)
+        user.force_password_change = force_change
+        queries.update_user(user)
+
+        # Log the reset if we have a current user (admin)
+        if self._current_user:
+            get_audit_service().log_password_reset(self._current_user, user)
+
+        return True
+
+    def clear_force_password_change(self, user_id: int) -> bool:
+        """
+        Clear the force_password_change flag for a user.
+
+        Args:
+            user_id: ID of user to update
+
+        Returns:
+            True if successful
+        """
+        user = queries.get_user(user_id)
+        if user is None:
+            return False
+
+        user.force_password_change = False
         queries.update_user(user)
         return True
 
@@ -193,7 +268,8 @@ class AuthService:
         role: str = UserRole.VIEWER.value,
         departments: Optional[list[str]] = None,
         view_departments: Optional[list[str]] = None,
-        edit_departments: Optional[list[str]] = None
+        edit_departments: Optional[list[str]] = None,
+        force_password_change: bool = True
     ) -> Optional[User]:
         """
         Create a new user account.
@@ -205,6 +281,7 @@ class AuthService:
             departments: Department restrictions (for Restricted/Viewer)
             view_departments: Departments Editor can VIEW (for Editor role)
             edit_departments: Departments Editor can EDIT (for Editor role)
+            force_password_change: If True, user must change password on first login
 
         Returns:
             Created User or None if username exists
@@ -219,6 +296,7 @@ class AuthService:
             departments=departments or [],
             view_departments=view_departments or [],
             edit_departments=edit_departments or [],
+            force_password_change=force_password_change,
         )
 
         created = queries.create_user(user)

@@ -278,12 +278,16 @@ class FilterPanel(QGroupBox):
     Filter panel for issue list filtering.
 
     Emits filter_changed signal when any filter value changes.
+    Emits delete_requested signal when delete button is clicked.
     """
 
     filter_changed = Signal()
+    delete_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__("Filters", parent)
+
+        self._delete_btn: QPushButton = None
 
         self._setup_ui()
         self._connect_signals()
@@ -404,6 +408,13 @@ class FilterPanel(QGroupBox):
         clear_btn = QPushButton("Clear Filters")
         clear_btn.clicked.connect(self.clear_filters)
         layout.addWidget(clear_btn)
+
+        # Delete button (admin only - hidden by default)
+        self._delete_btn = QPushButton("Delete Filtered Issues")
+        self._delete_btn.setProperty("danger", True)
+        self._delete_btn.clicked.connect(self.delete_requested.emit)
+        self._delete_btn.setVisible(False)  # Hidden until set_delete_visible is called
+        layout.addWidget(self._delete_btn)
 
         layout.addStretch()
 
@@ -529,6 +540,11 @@ class FilterPanel(QGroupBox):
         """Check if any filters are active."""
         return bool(self.get_filters())
 
+    def set_delete_visible(self, visible: bool) -> None:
+        """Show or hide the delete button (for admin users only)."""
+        if self._delete_btn:
+            self._delete_btn.setVisible(visible)
+
 
 class CollapsibleFilterPanel(QWidget):
     """
@@ -539,6 +555,7 @@ class CollapsibleFilterPanel(QWidget):
     """
 
     filter_changed = Signal()
+    delete_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -576,6 +593,7 @@ class CollapsibleFilterPanel(QWidget):
         # Actual filter panel
         self._filter_panel = FilterPanel()
         self._filter_panel.filter_changed.connect(self.filter_changed.emit)
+        self._filter_panel.delete_requested.connect(self.delete_requested.emit)
 
         layout.addWidget(self._collapsed_strip)
         layout.addWidget(self._filter_panel)
@@ -626,3 +644,7 @@ class CollapsibleFilterPanel(QWidget):
     def has_active_filters(self) -> bool:
         """Check if any filters are active."""
         return self._filter_panel.has_active_filters()
+
+    def set_delete_visible(self, visible: bool) -> None:
+        """Show or hide the delete button (for admin users only)."""
+        self._filter_panel.set_delete_visible(visible)

@@ -145,6 +145,30 @@ class AuditService:
         )
         queries.create_audit_log(entry)
 
+    def log_password_changed(self, user: User) -> None:
+        """Log user changing their own password."""
+        entry = AuditLogEntry(
+            user_id=user.id,
+            username=user.username,
+            action="password_changed",
+            entity_type="user",
+            entity_id=user.id,
+            details=None
+        )
+        queries.create_audit_log(entry)
+
+    def log_password_reset(self, admin: User, target_user: User) -> None:
+        """Log admin resetting a user's password."""
+        entry = AuditLogEntry(
+            user_id=admin.id,
+            username=admin.username,
+            action="password_reset",
+            entity_type="user",
+            entity_id=target_user.id,
+            details={"target_username": target_user.username}
+        )
+        queries.create_audit_log(entry)
+
     def log_settings_changed(self, user: User, setting: str, old_value: str, new_value: str) -> None:
         """Log settings change."""
         entry = AuditLogEntry(
@@ -154,6 +178,29 @@ class AuditService:
             entity_type="settings",
             entity_id=None,
             details={"setting": setting, "before": old_value, "after": new_value}
+        )
+        queries.create_audit_log(entry)
+
+    def log_bulk_delete(self, user: User, count: int, filters: dict) -> None:
+        """Log bulk delete operation."""
+        # Convert filter values to strings for JSON serialization
+        filter_summary = {}
+        for key, value in filters.items():
+            if isinstance(value, list):
+                filter_summary[key] = value
+            else:
+                filter_summary[key] = str(value)
+
+        entry = AuditLogEntry(
+            user_id=user.id,
+            username=user.username,
+            action="bulk_deleted",
+            entity_type="issue",
+            entity_id=None,
+            details={
+                "count": count,
+                "filters": filter_summary if filter_summary else "No filters (all issues)"
+            }
         )
         queries.create_audit_log(entry)
 

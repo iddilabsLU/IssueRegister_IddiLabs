@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role TEXT CHECK(role IN ('Administrator', 'Editor', 'Restricted', 'Viewer')) DEFAULT 'Viewer',
     departments TEXT,
+    force_password_change INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -125,9 +126,24 @@ def ensure_all_tables_exist() -> None:
 
     This handles the case where a database was created before new tables
     (like audit_log) were added. Uses CREATE TABLE IF NOT EXISTS so it's
-    safe to run on existing databases.
+    safe to run on existing databases. Also runs column migrations.
     """
     init_database()
+    migrate_add_force_password_change()
+
+
+def migrate_add_force_password_change() -> None:
+    """Add force_password_change column to users table if it doesn't exist."""
+    db = DatabaseConnection.get_instance()
+
+    # Check if column exists
+    row = db.fetchone("PRAGMA table_info(users)")
+    columns = db.fetchall("PRAGMA table_info(users)")
+    column_names = [col["name"] for col in columns]
+
+    if "force_password_change" not in column_names:
+        db.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER DEFAULT 0")
+        db.commit()
 
 
 def run_migrations() -> None:
@@ -135,6 +151,7 @@ def run_migrations() -> None:
     init_database()
     create_default_admin()
     set_master_password()
+    migrate_add_force_password_change()
 
 
 # =============================================================================
