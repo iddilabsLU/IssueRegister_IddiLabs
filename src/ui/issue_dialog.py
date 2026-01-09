@@ -1,6 +1,7 @@
 """Issue detail dialog for viewing and editing issues."""
 
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -10,12 +11,14 @@ from PySide6.QtWidgets import (
     QFileDialog, QListWidget, QListWidgetItem
 )
 from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QColor
 
 from src.database.models import Issue, User, Status, RiskLevel
 from src.database import queries
 from src.services.auth import get_auth_service
 from src.services.permissions import get_permission_service
 from src.services.issue_service import get_issue_service
+from src.services.file_service import get_file_service
 
 
 class IssueDialog(QDialog):
@@ -40,7 +43,9 @@ class IssueDialog(QDialog):
         self._user = user or get_auth_service().current_user
         self._permissions = get_permission_service()
         self._issue_service = get_issue_service()
+        self._file_service = get_file_service()
         self._is_new = issue is None
+        self._staging_session_id: Optional[str] = None  # For new issues
 
         self._setup_ui()
         self._populate_dropdowns()
@@ -206,10 +211,17 @@ class IssueDialog(QDialog):
         self._docs_list.setMaximumHeight(100)
         docs_layout.addWidget(self._docs_list)
 
+        # Connect double-click to open file
+        self._docs_list.itemDoubleClicked.connect(self._on_open_document)
+
         docs_btn_layout = QHBoxLayout()
         self._add_doc_btn = QPushButton("Add File")
         self._add_doc_btn.clicked.connect(self._on_add_document)
         docs_btn_layout.addWidget(self._add_doc_btn)
+
+        self._open_doc_btn = QPushButton("Open")
+        self._open_doc_btn.clicked.connect(self._on_open_document)
+        docs_btn_layout.addWidget(self._open_doc_btn)
 
         self._remove_doc_btn = QPushButton("Remove")
         self._remove_doc_btn.clicked.connect(self._on_remove_document)
@@ -332,10 +344,25 @@ class IssueDialog(QDialog):
 
         self._updates_edit.setPlainText(self._issue.updates or "")
 
-        # Load documents
+        # Load documents with file status
         self._docs_list.clear()
         for doc in self._issue.supporting_docs:
-            self._docs_list.addItem(doc)
+            item = QListWidgetItem()
+            file_info = self._file_service.get_attachment_file_info(doc, self._issue.id)
+
+            if not file_info["exists"]:
+                # Show missing files with red text
+                item.setText(f"{file_info['display_name']} (missing)")
+                item.setForeground(QColor(185, 28, 28))  # Red color
+            elif file_info["is_legacy"]:
+                # Show legacy paths with just filename
+                item.setText(file_info["display_name"])
+            else:
+                item.setText(doc)
+
+            # Store the original filename/path as data
+            item.setData(Qt.ItemDataRole.UserRole, doc)
+            self._docs_list.addItem(item)
 
     def _apply_permissions(self):
         """Apply field permissions based on user role."""
@@ -429,10 +456,11 @@ class IssueDialog(QDialog):
             widget.setEnabled(not readonly)
 
         self._add_doc_btn.setEnabled(not readonly)
+        self._open_doc_btn.setEnabled(True)  # Always allow opening files
         self._remove_doc_btn.setEnabled(not readonly)
 
     def _on_add_document(self):
-        """Add supporting document."""
+        """Add supporting document(s) to the issue."""
         files, _ = QFileDialog.getOpenFileNames(
             self,
             "Select Supporting Documents",
@@ -441,14 +469,111 @@ class IssueDialog(QDialog):
         )
 
         for file_path in files:
-            if file_path:
-                self._docs_list.addItem(file_path)
+            if not file_path:
+                continue
+
+            # For new issues, create staging session if needed
+            if self._is_new:
+                if self._staging_session_id is None:
+                    self._staging_session_id = self._file_service.create_staging_session()
+
+                filename, error = self._file_service.add_file(
+                    file_path,
+                    session_id=self._staging_session_id
+                )
+            else:
+                filename, error = self._file_service.add_file(
+                    file_path,
+                    issue_id=self._issue.id
+                )
+
+            if error:
+                QMessageBox.warning(
+                    self, "Error Adding File",
+                    f"Could not add '{Path(file_path).name}':\n{error}"
+                )
+                continue
+
+            if filename:
+                item = QListWidgetItem(filename)
+                item.setData(Qt.ItemDataRole.UserRole, filename)
+                self._docs_list.addItem(item)
+
+    def _on_open_document(self):
+        """Open the selected document with system default application."""
+        current_item = self._docs_list.currentItem()
+        if not current_item:
+            return
+
+        # Get the original filename from item data
+        filename = current_item.data(Qt.ItemDataRole.UserRole)
+        if not filename:
+            filename = current_item.text()
+
+        # Can't open files for new issues (not saved yet)
+        if self._is_new:
+            QMessageBox.information(
+                self,
+                "Save Required",
+                "Please save the issue first to open attached files."
+            )
+            return
+
+        # Open the file
+        downloaded_path, error = self._file_service.open_file(filename, self._issue.id)
+
+        if error:
+            if downloaded_path:
+                # Partial success - file copied but couldn't open
+                QMessageBox.warning(
+                    self, "Open File",
+                    f"File copied to:\n{downloaded_path}\n\n{error}"
+                )
+            else:
+                QMessageBox.critical(
+                    self, "Error Opening File",
+                    f"Could not open file:\n{error}"
+                )
 
     def _on_remove_document(self):
-        """Remove selected document."""
-        current = self._docs_list.currentRow()
-        if current >= 0:
-            self._docs_list.takeItem(current)
+        """Remove selected document from the issue."""
+        current_item = self._docs_list.currentItem()
+        if not current_item:
+            return
+
+        # Get the original filename from item data
+        filename = current_item.data(Qt.ItemDataRole.UserRole)
+        if not filename:
+            filename = current_item.text()
+
+        display_name = Path(filename).name if ('/' in filename or '\\' in filename) else filename
+
+        # Confirm removal
+        reply = QMessageBox.question(
+            self,
+            "Remove Document",
+            f"Remove '{display_name}' from this issue?\n\n"
+            "The file will be moved to a deleted folder.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # For existing issues, remove the file immediately
+        if not self._is_new and self._issue:
+            success, error = self._file_service.remove_file(filename, self._issue.id)
+            if not success:
+                QMessageBox.warning(
+                    self, "Error Removing File",
+                    f"Could not remove file:\n{error}"
+                )
+                # Still remove from list even if file operation failed
+
+        # Remove from UI
+        current_row = self._docs_list.currentRow()
+        self._docs_list.takeItem(current_row)
 
     def _on_save(self):
         """Save the issue."""
@@ -468,6 +593,31 @@ class IssueDialog(QDialog):
             if error:
                 QMessageBox.critical(self, "Error", error)
                 return
+
+            # Migrate staged files to issue folder
+            if self._staging_session_id:
+                migrated, file_errors = self._file_service.migrate_staging_to_issue(
+                    self._staging_session_id,
+                    created.id
+                )
+
+                if file_errors:
+                    QMessageBox.warning(
+                        self,
+                        "File Migration Warning",
+                        "Some files could not be attached:\n" + "\n".join(file_errors)
+                    )
+
+                # Update issue with migrated filenames
+                if migrated:
+                    self._issue_service.update_issue(
+                        self._user,
+                        created.id,
+                        {"supporting_docs": migrated}
+                    )
+
+                self._staging_session_id = None
+
             QMessageBox.information(
                 self,
                 "Success",
@@ -487,10 +637,14 @@ class IssueDialog(QDialog):
 
     def _build_issue_from_form(self) -> Issue:
         """Build Issue object from form values."""
-        # Get supporting docs
+        # Get supporting docs (use data for original filename, fallback to text)
         docs = []
         for i in range(self._docs_list.count()):
-            docs.append(self._docs_list.item(i).text())
+            item = self._docs_list.item(i)
+            filename = item.data(Qt.ItemDataRole.UserRole)
+            if not filename:
+                filename = item.text()
+            docs.append(filename)
 
         return Issue(
             id=self._issue.id if self._issue else None,
@@ -515,9 +669,14 @@ class IssueDialog(QDialog):
 
     def _get_updates_dict(self) -> dict:
         """Get dictionary of updated values."""
+        # Get supporting docs (use data for original filename, fallback to text)
         docs = []
         for i in range(self._docs_list.count()):
-            docs.append(self._docs_list.item(i).text())
+            item = self._docs_list.item(i)
+            filename = item.data(Qt.ItemDataRole.UserRole)
+            if not filename:
+                filename = item.text()
+            docs.append(filename)
 
         return {
             "title": self._title_edit.text().strip(),
@@ -561,3 +720,10 @@ class IssueDialog(QDialog):
                 self.accept()
             else:
                 QMessageBox.critical(self, "Error", error)
+
+    def reject(self):
+        """Handle dialog cancellation - clean up staging files."""
+        if self._staging_session_id:
+            self._file_service.cleanup_staging_session(self._staging_session_id)
+            self._staging_session_id = None
+        super().reject()
