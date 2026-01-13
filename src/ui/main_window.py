@@ -85,6 +85,7 @@ class MainWindow(QMainWindow):
             ("register", "Issues"),
             ("dashboard", "Dashboard"),
             ("settings", "Settings"),
+            ("iddi_labs", "IddiLabs"),
         ]
 
         for nav_id, label in nav_items:
@@ -130,6 +131,7 @@ class MainWindow(QMainWindow):
         from src.ui.register import RegisterView
         from src.ui.dashboard import DashboardView
         from src.ui.settings import SettingsView
+        from src.ui.iddi_labs import IddiLabsView
 
         # Register view
         register_view = RegisterView()
@@ -145,6 +147,11 @@ class MainWindow(QMainWindow):
         settings_view = SettingsView()
         self._stack.addWidget(settings_view)
         self._views["settings"] = settings_view
+
+        # IddiLabs view
+        iddi_labs_view = IddiLabsView()
+        self._stack.addWidget(iddi_labs_view)
+        self._views["iddi_labs"] = iddi_labs_view
 
     def _connect_signals(self):
         """Connect view signals."""
@@ -176,7 +183,8 @@ class MainWindow(QMainWindow):
         view_names = {
             "register": "Issue Register",
             "dashboard": "Dashboard",
-            "settings": "Settings"
+            "settings": "Settings",
+            "iddi_labs": "IddiLabs"
         }
         self.statusBar().showMessage(f"Viewing: {view_names.get(view_id, view_id)}")
 

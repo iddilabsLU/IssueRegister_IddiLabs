@@ -147,7 +147,7 @@ class SettingsView(QWidget):
 
         # Export backup section
         export_layout = QHBoxLayout()
-        export_label = QLabel("Export backup of all issues:")
+        export_label = QLabel("Export backup (database + attachments):")
         export_layout.addWidget(export_label)
         export_layout.addStretch()
         self._export_backup_btn = QPushButton("Export Backup")
@@ -180,7 +180,7 @@ class SettingsView(QWidget):
         self._import_frame = QFrame()
         import_layout = QHBoxLayout(self._import_frame)
         import_layout.setContentsMargins(0, 0, 0, 0)
-        import_label = QLabel("Import backup (overwrites current data):")
+        import_label = QLabel("Import backup (overwrites database + attachments):")
         import_layout.addWidget(import_label)
         import_layout.addStretch()
         self._import_backup_btn = QPushButton("Import Backup")
@@ -527,12 +527,12 @@ class SettingsView(QWidget):
                 )
 
     def _on_export_backup(self):
-        """Export database backup."""
+        """Export database and attachments backup."""
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "Export Backup",
-            "issue_register_backup.db",
-            "SQLite Database (*.db)"
+            "issue_register_backup.zip",
+            "ZIP Archive (*.zip)"
         )
 
         if not file_path:
@@ -544,7 +544,7 @@ class SettingsView(QWidget):
             QMessageBox.information(
                 self,
                 "Backup Complete",
-                f"Database backup saved to:\n{file_path}"
+                f"Database and attachments backup saved to:\n{file_path}"
             )
         else:
             QMessageBox.critical(self, "Backup Failed", error)
@@ -597,11 +597,11 @@ class SettingsView(QWidget):
             QMessageBox.critical(self, "Export Failed", error)
 
     def _on_import_backup(self):
-        """Import database backup."""
+        """Import database and attachments backup."""
         reply = QMessageBox.warning(
             self,
             "Confirm Import",
-            "Importing a backup will OVERWRITE all current data.\n\n"
+            "Importing a backup will OVERWRITE all current data and attachments.\n\n"
             "This action cannot be undone. Continue?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
@@ -613,7 +613,7 @@ class SettingsView(QWidget):
             self,
             "Import Backup",
             "",
-            "SQLite Database (*.db)"
+            "ZIP Archive (*.zip)"
         )
 
         if not file_path:
@@ -625,7 +625,7 @@ class SettingsView(QWidget):
             QMessageBox.information(
                 self,
                 "Import Complete",
-                "Database restored successfully.\n"
+                "Database and attachments restored successfully.\n"
                 "Please restart the application."
             )
         else:

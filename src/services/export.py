@@ -1,6 +1,8 @@
 """Export service for Excel operations."""
 
 import shutil
+import tempfile
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -306,29 +308,51 @@ class ExportService:
 
     def backup_database(self, backup_path: str) -> tuple[bool, str]:
         """
-        Create a backup of the current database.
+        Create a backup of the current database and attachments.
+
+        Creates a ZIP file containing:
+        - Database file (.db, -wal, -shm)
+        - Attachments folder (excluding _staging, including _deleted)
 
         Args:
-            backup_path: Path to save the backup
+            backup_path: Path to save the backup ZIP file
 
         Returns:
             Tuple of (success, error_message)
         """
         try:
             db = DatabaseConnection.get_instance()
-            source_path = db.db_path
+            source_db_path = db.db_path
 
             # Ensure we flush any pending changes
             db.commit()
 
-            # Copy the database file
-            shutil.copy2(str(source_path), backup_path)
+            # Get attachments folder path
+            attachments_root = source_db_path.parent / "attachments"
 
-            # Also copy WAL and SHM files if they exist
-            for suffix in ["-wal", "-shm"]:
-                src = str(source_path) + suffix
-                if Path(src).exists():
-                    shutil.copy2(src, backup_path + suffix)
+            # Create ZIP file
+            with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Add database file
+                zipf.write(str(source_db_path), "database.db")
+
+                # Add WAL and SHM files if they exist
+                for suffix in ["-wal", "-shm"]:
+                    src = str(source_db_path) + suffix
+                    if Path(src).exists():
+                        zipf.write(src, f"database.db{suffix}")
+
+                # Add attachments folder (if it exists)
+                if attachments_root.exists():
+                    for item in attachments_root.rglob("*"):
+                        # Skip _staging folder entirely
+                        if "_staging" in item.parts:
+                            continue
+
+                        # Add files to ZIP maintaining folder structure
+                        if item.is_file():
+                            # Get path relative to attachments root
+                            rel_path = item.relative_to(attachments_root)
+                            zipf.write(str(item), f"attachments/{rel_path}")
 
             return True, ""
 
@@ -337,48 +361,103 @@ class ExportService:
 
     def restore_database(self, backup_path: str) -> tuple[bool, str]:
         """
-        Restore database from a backup.
+        Restore database and attachments from a backup ZIP file.
 
-        WARNING: This overwrites the current database!
+        WARNING: This overwrites the current database and attachments!
 
         Args:
-            backup_path: Path to the backup file
+            backup_path: Path to the backup ZIP file
 
         Returns:
             Tuple of (success, error_message)
         """
+        temp_dir = None
         try:
             if not Path(backup_path).exists():
                 return False, "Backup file not found."
 
+            # Check if it's a ZIP file
+            if not zipfile.is_zipfile(backup_path):
+                return False, "Backup file is not a valid ZIP file."
+
             db = DatabaseConnection.get_instance()
-            target_path = str(db.db_path)
+            target_db_path = db.db_path
+            target_db_dir = target_db_path.parent
 
             # Close current connection
             db.close()
 
+            # Create temporary directory for extraction
+            temp_dir = tempfile.mkdtemp(prefix="issue_register_restore_")
+            temp_path = Path(temp_dir)
+
+            # Extract ZIP to temporary location
+            with zipfile.ZipFile(backup_path, 'r') as zipf:
+                zipf.extractall(temp_path)
+
+            # Verify extracted database exists
+            extracted_db = temp_path / "database.db"
+            if not extracted_db.exists():
+                return False, "Backup ZIP does not contain database.db file."
+
             # Remove existing database files
             for suffix in ["", "-wal", "-shm"]:
-                path = target_path + suffix
+                path = str(target_db_path) + suffix
                 if Path(path).exists():
                     Path(path).unlink()
 
-            # Copy backup
-            shutil.copy2(backup_path, target_path)
+            # Copy database files to target location
+            shutil.copy2(str(extracted_db), str(target_db_path))
 
-            # Copy WAL and SHM if they exist
+            # Copy WAL and SHM if they exist in backup
             for suffix in ["-wal", "-shm"]:
-                src = backup_path + suffix
-                if Path(src).exists():
-                    shutil.copy2(src, target_path + suffix)
+                src = temp_path / f"database.db{suffix}"
+                if src.exists():
+                    shutil.copy2(str(src), str(target_db_path) + suffix)
 
-            # Reconnect
+            # Restore attachments folder if it exists in backup
+            extracted_attachments = temp_path / "attachments"
+            if extracted_attachments.exists():
+                target_attachments = target_db_dir / "attachments"
+
+                # Remove existing attachments folder (except _staging to preserve unsaved work)
+                if target_attachments.exists():
+                    # Preserve staging folder if it exists
+                    staging_backup = None
+                    staging_folder = target_attachments / "_staging"
+                    if staging_folder.exists():
+                        staging_backup = tempfile.mkdtemp(prefix="staging_backup_")
+                        shutil.copytree(str(staging_folder), str(Path(staging_backup) / "_staging"))
+
+                    # Remove attachments folder
+                    shutil.rmtree(str(target_attachments), ignore_errors=True)
+
+                    # Restore staging if it was backed up
+                    if staging_backup:
+                        target_attachments.mkdir(parents=True, exist_ok=True)
+                        shutil.copytree(
+                            str(Path(staging_backup) / "_staging"),
+                            str(target_attachments / "_staging")
+                        )
+                        shutil.rmtree(staging_backup, ignore_errors=True)
+
+                # Copy attachments from backup
+                shutil.copytree(str(extracted_attachments), str(target_attachments), dirs_exist_ok=True)
+
+            # Clean up temporary directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            temp_dir = None
+
+            # Reconnect to database
             DatabaseConnection.reset_instance()
-            DatabaseConnection.get_instance(target_path)
+            DatabaseConnection.get_instance(str(target_db_path))
 
             return True, ""
 
         except Exception as e:
+            # Clean up temporary directory on error
+            if temp_dir and Path(temp_dir).exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
             return False, f"Restore failed: {str(e)}"
 
     def export_users_to_excel(self, file_path: str) -> tuple[bool, str]:
