@@ -33,18 +33,9 @@ echo.
 REM Clean previous builds
 if exist "dist" rmdir /s /q dist
 if exist "build" rmdir /s /q build
-if exist "IssueRegister.spec" del /q IssueRegister.spec
 
-REM Build the executable
-REM Note: Add --icon=path/to/icon.ico if you have an application icon
-pyinstaller --onefile ^
-    --windowed ^
-    --name "IssueRegister" ^
-    --add-data "src/resources;src/resources" ^
-    --hidden-import "PySide6.QtCharts" ^
-    --hidden-import "bcrypt" ^
-    --hidden-import "openpyxl" ^
-    src/main.py
+REM Build the executable using the spec file (has all hidden imports configured)
+pyinstaller IssueRegister.spec --clean
 
 if errorlevel 1 (
     echo.

@@ -390,7 +390,7 @@ SAMPLE_ISSUES = [
 
 
 def generate_demo_data() -> None:
-    """Generate demo issues and users for testing."""
+    """Generate demo issues for first-time users."""
     db = DatabaseConnection.get_instance()
 
     # Check if demo data already exists
@@ -399,24 +399,6 @@ def generate_demo_data() -> None:
         return  # Demo data already exists
 
     today = date.today()
-
-    # Create demo users
-    demo_users = [
-        ("editor1", "editor1", UserRole.EDITOR.value, []),
-        ("restricted1", "restricted1", UserRole.RESTRICTED.value, ["Finance", "HR"]),
-        ("restricted2", "restricted2", UserRole.RESTRICTED.value, ["IT", "Operations"]),
-        ("viewer1", "viewer1", UserRole.VIEWER.value, []),
-    ]
-
-    for username, password, role, departments in demo_users:
-        if not queries.user_exists(username):
-            password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-            db.execute(
-                "INSERT INTO users (username, password_hash, role, departments, created_at) VALUES (?, ?, ?, ?, ?)",
-                (username, password_hash, role, "[]" if not departments else str(departments).replace("'", '"'), datetime.now().isoformat())
-            )
-
-    db.commit()
 
     # Generate demo issues
     statuses = [s.value for s in Status]

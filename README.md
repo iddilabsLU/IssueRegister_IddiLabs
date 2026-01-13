@@ -2,6 +2,12 @@
 
 An open-source desktop application for tracking issues across organisational departments from identification through closure.
 
+## Download
+
+**Windows users**: Download the latest `IssueRegister.exe` from the [Releases](../../releases) page - no installation required.
+
+On first run, the application will prompt you to select or create a database location.
+
 ## Features
 
 - **Issue Tracking**: Complete lifecycle management from Draft to Closed
@@ -62,9 +68,6 @@ When authentication is enabled:
 | Username | Password | Role |
 |----------|----------|------|
 | admin | admin | Administrator |
-| editor1 | editor1 | Editor |
-| restricted1 | restricted1 | Restricted |
-| viewer1 | viewer1 | Viewer |
 
 **Master Password**: `masterpass123` (for password recovery)
 
@@ -110,7 +113,7 @@ tests/              # pytest test files
 
 ## License
 
-Open Source - See LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Credits
 

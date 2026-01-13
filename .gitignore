@@ -21,7 +21,8 @@ ENV/
 # Build artifacts
 build/
 dist/
-*.spec
+# Keep IssueRegister.spec (needed for reproducible builds)
+!IssueRegister.spec
 
 # --------------------- IDE / Editor ---------------------
 # VS Code

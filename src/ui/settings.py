@@ -250,6 +250,18 @@ class SettingsView(QWidget):
         user_btn_layout.addStretch()
         user_layout.addLayout(user_btn_layout)
 
+        # Role explanations
+        role_help = QLabel(
+            "<b>Roles:</b> "
+            "<b>Administrator</b> - Full access: manage users, settings, and all issues. "
+            "<b>Editor</b> - Edit all issues and close them; no user management. "
+            "<b>Restricted</b> - Limited to assigned departments; cannot close issues. "
+            "<b>Viewer</b> - Read-only access to all issues."
+        )
+        role_help.setWordWrap(True)
+        role_help.setStyleSheet("color: #6B7280; font-size: 11px; padding: 8px 0;")
+        user_layout.addWidget(role_help)
+
         data_layout.addWidget(self._user_group)
 
         main_layout.addWidget(data_group)
