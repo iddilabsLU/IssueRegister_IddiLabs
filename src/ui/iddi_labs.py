@@ -55,8 +55,8 @@ class IddiLabsView(QWidget):
         # Intro text
         intro = QLabel(
             "I am a Risk Manager working in Luxembourg's financial sector with no coding background. "
+            "I am using AI tools and applied expertise to build small software solutions, free and open to everyone. \n\n"
             "IddiLabs is not a software company, not a VAT registered individual, not a team of developers. "
-            "It is my AI Learning Project."
         )
         intro.setWordWrap(True)
         intro_font = QFont()
@@ -98,7 +98,8 @@ class IddiLabsView(QWidget):
         free_text = QLabel(
             "Lot of companies, especially small and medium enterprises, do not have budget for this type of tools and keep using excel sheets. "
             "This software is production ready and free to use, so that everyone can benefit from it.\n\n"
-            "Additionally I'm doing it for my personal upskilling and career development."
+            "Additionally I'm doing it for my personal upskilling, career development and to prove what"
+            " Subject Matter Experts and AI can bring to companies."
         )
         free_text.setWordWrap(True)
         free_text_font = QFont()
