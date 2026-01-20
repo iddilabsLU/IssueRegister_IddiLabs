@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from src.database import queries
-from src.database.models import Issue, User, Status
+from src.database.models import Issue, User, Status, UserRole
 from src.services.audit import get_audit_service
 
 
@@ -42,7 +42,7 @@ class IssueService:
             return None, "You do not have permission to create issues."
 
         # Set default status based on role
-        if issue.status == Status.DRAFT.value and user.role != "Restricted":
+        if issue.status == Status.DRAFT.value and user.role != UserRole.RESTRICTED.value:
             # Non-restricted users default to Open
             issue.status = self._permissions.get_default_status_for_role(user)
 
