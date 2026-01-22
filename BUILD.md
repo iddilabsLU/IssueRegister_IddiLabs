@@ -1,50 +1,51 @@
 # Building Issue Register
 
-This document describes how to build the Issue Register application as a standalone Windows executable.
+This guide explains how to build Issue Register as a standalone Windows executable.
 
 ## Prerequisites
 
-- **Python 3.11+** - Download from [python.org](https://www.python.org/downloads/)
-- **Windows 10/11** - The build script is designed for Windows
+- **Python 3.11+** — [Download from python.org](https://www.python.org/downloads/)
+- **Windows 10/11** — The build process targets Windows
 
 ## Quick Build
 
-1. Open a command prompt in the project directory
-2. Run the build script:
-
-```batch
+```bash
+# From the project root directory
 build.bat
 ```
 
-The executable will be created at `dist\IssueRegister.exe`.
+Output: `dist\IssueRegister.exe`
 
-## Manual Build Steps
+## Step-by-Step Build
 
-If you prefer to build manually or encounter issues:
+### 1. Set Up Environment
 
-### 1. Create Virtual Environment
-
-```batch
+```bash
+# Create virtual environment
 python -m venv venv
+
+# Activate it
 venv\Scripts\activate
 ```
 
 ### 2. Install Dependencies
 
-```batch
+```bash
+# Install all dependencies including PyInstaller
 pip install -r requirements-dev.txt
-pip install pyinstaller
 ```
 
-### 3. Run PyInstaller
+### 3. Build the Executable
 
-Using the spec file (recommended):
-```batch
+**Option A: Using the spec file (recommended)**
+
+```bash
 pyinstaller IssueRegister.spec --clean
 ```
 
-Or manually:
-```batch
+**Option B: Manual PyInstaller command**
+
+```bash
 pyinstaller --onefile ^
     --windowed ^
     --name "IssueRegister" ^
@@ -57,52 +58,69 @@ pyinstaller --onefile ^
     src/main.py
 ```
 
-The `IssueRegister.spec` file is pre-configured with all necessary hidden imports for file attachments and other features.
+### 4. Locate the Executable
 
-### 4. Find the Executable
+The built application is at: `dist\IssueRegister.exe`
 
-The built application will be at: `dist\IssueRegister.exe`
+## Adding a Custom Icon
 
-## Adding an Application Icon
+1. Create or obtain an `.ico` file (Windows icon format)
+2. Place it in the project root
+3. Build with the `--icon` flag:
 
-To add a custom icon to the executable:
-
-1. Place your icon file (must be `.ico` format) in the project
-2. Add the `--icon` flag to the PyInstaller command:
-
-```batch
-pyinstaller --onefile --windowed --name "IssueRegister" --icon=myicon.ico src/main.py
+```bash
+pyinstaller IssueRegister.spec --clean
+# Or add to manual command:
+pyinstaller --onefile --windowed --icon=app.ico --name "IssueRegister" src/main.py
 ```
+
+## What's Included in the Build
+
+The `IssueRegister.spec` file configures PyInstaller to include:
+
+| Component | Purpose |
+|-----------|---------|
+| `src/resources/` | Stylesheets and icons |
+| PySide6.QtCharts | Dashboard charts |
+| bcrypt | Password hashing |
+| openpyxl | Excel import/export |
+| ctypes | File attachment handling |
 
 ## Troubleshooting
 
-### Build Fails with Import Errors
+### Import Errors During Build
 
-Make sure all dependencies are installed:
+Ensure all dependencies are installed:
 
-```batch
+```bash
 pip install -r requirements-dev.txt
 ```
 
-### Antivirus Blocks the Build
+### Antivirus Interference
 
-Some antivirus software may block PyInstaller. Solutions:
-- Add the project folder to antivirus exclusions
-- Temporarily disable real-time protection during build
+Some antivirus software may flag or block PyInstaller. Solutions:
+
+1. Add the project folder to antivirus exclusions
+2. Temporarily disable real-time protection during build
+3. Submit a false positive report to your antivirus vendor
 
 ### Application Won't Start
 
-1. Run from command line to see error messages:
-   ```batch
-   dist\IssueRegister.exe
-   ```
-2. Check that `src/resources` folder is included in the build
+Run from command line to see error messages:
+
+```bash
+dist\IssueRegister.exe
+```
+
+Common issues:
+- Missing resources — ensure `src/resources` is included
+- Missing Qt plugins — add hidden imports for PySide6 modules
 
 ### Missing Qt Plugins
 
-If you see Qt plugin errors, add these hidden imports:
+Add these hidden imports if you see Qt plugin errors:
 
-```batch
+```bash
 --hidden-import "PySide6.QtCore"
 --hidden-import "PySide6.QtWidgets"
 --hidden-import "PySide6.QtGui"
@@ -110,27 +128,74 @@ If you see Qt plugin errors, add these hidden imports:
 
 ## Distribution
 
-The built executable (`dist\IssueRegister.exe`) is self-contained and can be distributed to users without requiring Python installation.
+The built executable is self-contained:
 
-On first run, the application will prompt the user to select or create a database location. The chosen path is saved in `%APPDATA%\IssueRegister\config.json`.
+- **No Python installation required** on target machines
+- **No dependencies to install** — everything is bundled
+- **Single file** — easy to distribute via file share, email, etc.
 
-### File Attachments
+### First Run Behavior
 
-When users attach files to issues, the files are copied to an `attachments` folder next to the database:
+When users first run the application:
+
+1. Application prompts for database location
+2. User can create a new database or open an existing one
+3. Path is saved to `%APPDATA%\IssueRegister\config.json`
+
+### File Attachments Structure
+
+When users attach files to issues, they're stored alongside the database:
+
 ```
 database_folder/
-├── issue_register.db
-└── attachments/
-    ├── 1/           # Files for issue #1
-    ├── 2/           # Files for issue #2
-    └── _deleted/    # Soft-deleted files
+├── issue_register.db      # The database
+└── attachments/           # File attachments
+    ├── 1/                     # Files for issue #1
+    ├── 2/                     # Files for issue #2
+    ├── _deleted/              # Soft-deleted files
+    └── _staging/              # Temporary files for new issues
 ```
+
+### Shared Network Deployment
+
+For multi-user setups:
+
+1. Place the database on a shared network folder
+2. Distribute the `.exe` to team members
+3. Each user points to the same database location
+4. Ensure all users have read/write access to the folder
 
 ## Development vs Production
 
-- **Development**: Run with `python -m src.main`
-- **Production**: Use the built executable
+| Mode | How to Run |
+|------|------------|
+| Development | `python -m src.main` |
+| Production | `dist\IssueRegister.exe` |
 
-## Updating After Code Changes
+## Rebuilding After Changes
 
-After making code changes, re-run `build.bat` to create a new executable with the updates.
+After making code changes:
+
+```bash
+# Clean and rebuild
+pyinstaller IssueRegister.spec --clean
+```
+
+The `--clean` flag ensures a fresh build without cached artifacts.
+
+## CI/CD Integration
+
+For automated builds (GitHub Actions, etc.):
+
+```yaml
+- name: Build executable
+  run: |
+    pip install -r requirements-dev.txt
+    pyinstaller IssueRegister.spec --clean
+
+- name: Upload artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: IssueRegister
+    path: dist/IssueRegister.exe
+```

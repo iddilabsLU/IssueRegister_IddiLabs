@@ -103,7 +103,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Issue Register")
     app.setApplicationVersion("1.0.0")
-    app.setOrganizationName("IDDI Labs")
+    app.setOrganizationName("IddiLabs")
 
     # Load stylesheet
     stylesheet = load_stylesheet()

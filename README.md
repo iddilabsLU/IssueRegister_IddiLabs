@@ -1,97 +1,68 @@
 # Issue Register
 
-An open-source desktop application for tracking issues across organisational departments from identification through closure.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-green.svg)](https://www.python.org/downloads/)
+[![PySide6](https://img.shields.io/badge/UI-PySide6%20(Qt6)-41CD52.svg)](https://doc.qt.io/qtforpython/)
 
-## Download
+An open-source desktop application for tracking issues across organisational departments from identification through closure. Built with Python and Qt for a native Windows experience.
 
-**Windows users**: Download the latest `IssueRegister.exe` from the [Releases](../../releases) page - no installation required.
-
-On first run, the application will prompt you to select or create a database location.
+<!-- Screenshots: Add application screenshots to docs/screenshots/ and update this section -->
+<!-- ![Issue Register](docs/screenshots/main.png) -->
 
 ## Features
 
-- **Issue Tracking**: Complete lifecycle management from Draft to Closed
-- **Role-Based Access Control**: Administrator, Editor, Restricted, and Viewer roles
-- **File Attachments**: Attach supporting documents to issues
-- **Dashboard Analytics**: KPIs, charts, and progress tracking
-- **Excel Integration**: Import/export issues to Excel
-- **Audit Logging**: Track all changes with exportable audit trail
-- **Local Database**: SQLite for data sovereignty
-- **Flexible Database Location**: Choose where to store your database
-- **Shared Access**: Optional multi-user via network folder
+- **Issue Lifecycle Management** — Track issues from Draft → Open → In Progress → Remediated → Closed
+- **Role-Based Access Control** — Administrator, Editor, Restricted, and Viewer roles with department restrictions
+- **File Attachments** — Attach supporting documents to any issue
+- **Dashboard Analytics** — KPIs, charts, and progress tracking at a glance
+- **Excel Integration** — Import/export issues and audit logs to Excel
+- **Audit Trail** — Complete logging of all changes for compliance
+- **Local-First** — SQLite database for data sovereignty and privacy
+- **Flexible Deployment** — Single-user or multi-user via shared network folder
+- **Zero Installation** — Single `.exe` file, no dependencies required
 
-## Installation
+## Quick Start
 
-### Prerequisites
+### For Users
 
-- Python 3.11 or higher
-- Windows 10 or later
+**Download** the latest `IssueRegister.exe` from the [Releases](../../releases) page — no installation required.
 
-### Setup
+On first launch, the application will prompt you to select or create a database location.
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd issueregister_iddilabs
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Run the application:
-   ```bash
-   python -m src.main
-   ```
-
-### Build Executable
-
-To create a standalone Windows executable:
-
-```bash
-build.bat
-```
-
-The executable will be created at `dist/IssueRegister.exe`.
-
-## Default Credentials
-
-When authentication is enabled:
+### Default Credentials
 
 | Username | Password | Role |
 |----------|----------|------|
 | admin | admin | Administrator |
 
-**Master Password**: `masterpass123` (for password recovery)
+**Master Password** (for recovery): `masterpass123`
 
-> **Important**: Change default credentials immediately in production!
+> ⚠️ **Important**: Change default credentials immediately in production!
 
-## User Roles
+## For Developers
 
-| Role | Permissions |
-|------|-------------|
-| **Administrator** | Full access: user management, database config, all issues |
-| **Editor** | Edit all issues, can close issues |
-| **Restricted** | Limited to assigned departments, cannot close issues |
-| **Viewer** | Read-only access |
+### Prerequisites
 
-## Status Workflow
+- Python 3.11 or higher
+- Windows 10/11
 
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/iddilabs/issue-register.git
+cd issue-register
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the application
+python -m src.main
 ```
-Draft → Open → In Progress → Remediated → Closed
-```
-
-- Restricted users create issues in Draft
-- Editor/Admin required to transition Draft→Open and Remediated→Closed
-
-## Development
 
 ### Running Tests
 
@@ -100,21 +71,85 @@ pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-### Project Structure
+### Building the Executable
+
+```bash
+build.bat
+```
+
+The executable will be created at `dist/IssueRegister.exe`. See [BUILD.md](BUILD.md) for detailed build instructions.
+
+## User Roles
+
+| Role | Permissions |
+|------|-------------|
+| **Administrator** | Full access: user management, database config, all issues |
+| **Editor** | Edit all issues, can close issues, separate view/edit department restrictions |
+| **Restricted** | Limited to assigned departments, cannot close issues or transition Draft→Open |
+| **Viewer** | Read-only access |
+
+## Status Workflow
+
+```
+Draft → Open → In Progress → Remediated → Closed
+```
+
+- Restricted users create issues in **Draft** status
+- **Editor/Admin** required for Draft→Open and Remediated→Closed transitions
+
+## Project Structure
 
 ```
 src/
-├── database/       # SQLite connection, models, queries
-├── services/       # Business logic (auth, permissions, export)
+├── database/       # SQLite connection, models, queries, migrations
+├── services/       # Business logic (auth, permissions, export, file attachments)
 ├── ui/             # PySide6 views and widgets
 └── resources/      # Stylesheets and icons
 tests/              # pytest test files
 ```
 
+## Documentation
+
+- [BUILD.md](BUILD.md) — Detailed build and packaging instructions
+- [SPECIFICATION.md](SPECIFICATION.md) — Complete product specification
+- [CONTRIBUTING.md](CONTRIBUTING.md) — How to contribute to this project
+- [CLAUDE.md](CLAUDE.md) — Development guidelines for AI-assisted coding
+
+## Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request.
+
+### Quick Contribution Guide
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`pytest tests/ -v`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Language | Python 3.11+ |
+| UI Framework | PySide6 (Qt6) |
+| Database | SQLite (WAL mode) |
+| Charts | QtCharts |
+| Excel I/O | openpyxl |
+| Authentication | bcrypt |
+| Packaging | PyInstaller |
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
-## Credits
+## Acknowledgments
 
-Developed by IDDI Labs.
+Developed by [IddiLabs](https://github.com/iddilabs).
+
+---
+
+**Found a bug?** [Open an issue](../../issues/new)
+**Have a question?** [Start a discussion](../../discussions)

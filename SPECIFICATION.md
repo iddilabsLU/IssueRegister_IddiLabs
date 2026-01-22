@@ -2,10 +2,12 @@
 
 > **Version:** 2.0
 > **Status:** Implemented
-> **Last Updated:** 2026-01-09
-> **License:** Open Source
+> **License:** [MIT](LICENSE)
+> **Repository:** [github.com/iddilabs/issue-register](https://github.com/iddilabs/issue-register)
 
 An open-source desktop application for tracking issues across organisational departments from identification through closure. Locally installable with optional shared database access, file attachments, and comprehensive audit logging.
+
+This document serves as the complete product specification for contributors and users who want to understand the full feature set and technical details.
 
 ---
 
